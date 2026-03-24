@@ -15,12 +15,16 @@ Webanwendung zur Verwaltung von Leistungsabzeichen-Übungen (LAZ) für Freiwilli
 - Sortierbare Teilnehmer-Tabelle mit Frist-Ampelsystem (✅ / ⚠️ / ❌)
 - Terminliste mit farblicher Hervorhebung (nächster Termin, vergangene Termine)
 
+  <img width="1274" height="899" alt="Bildschirmfoto 2026-03-25 um 00 30 01" src="https://github.com/user-attachments/assets/6037e5f1-a948-43ae-948a-79e87aed77ab" />
+
 ### Teilnehmer-Detailseite
 - Persönliche Fortschrittsbalken für beide Fristen
 - Donut-Diagramm (Anwesend / Entschuldigt / Fehlend / Ausstehend)
 - Entschuldigungs-Button mit automatischer Kurzfristig-Warnung (< 1h vor Übungsbeginn)
 - Entschuldigung zurückziehen (solange Termin nicht begonnen hat)
 - Persönliche Strafenliste
+
+<img width="1269" height="919" alt="Bildschirmfoto 2026-03-25 um 00 36 25" src="https://github.com/user-attachments/assets/302e06e9-0944-4af0-9dfa-75c9cecc7d20" />
 
 ### Admin-Bereich
 - Event-Verwaltung (Name, Status, Fristen, Übungsdauer, Wetter-Standort)
@@ -32,6 +36,10 @@ Webanwendung zur Verwaltung von Leistungsabzeichen-Übungen (LAZ) für Freiwilli
 - Strafkasse-Statistik (Kreisdiagramm + Balkendiagramm)
 - Audit-Log mit Filtern und CSV-Export
 - Neue Jahrgänge erstellen
+
+<img width="1286" height="799" alt="Bildschirmfoto 2026-03-25 um 00 29 10" src="https://github.com/user-attachments/assets/0f976c85-f57a-4038-9b01-3266a6e9375b" />
+
+<img width="1309" height="682" alt="Bildschirmfoto 2026-03-25 um 00 28 31" src="https://github.com/user-attachments/assets/02997895-a4d8-42aa-aedf-772e1b793455" />
 
 ## Technische Details
 
@@ -112,6 +120,10 @@ define('SETUP_COMPLETE', true);
 | Dashboard | `index.php?event={public_token}` |
 | Teilnehmer-Detail | `index.php?event={public_token}&member={id}` |
 | Admin-Bereich | `index.php?event={public_token}&admin={admin_token}` |
+
+## Changelog
+
+Siehe [CHANGELOG.md](CHANGELOG.md) für die vollständige Versionshistorie.
 
 ## Lizenz
 
