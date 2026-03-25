@@ -112,7 +112,7 @@ Die Anwendung hat eine dreistufige Verwaltungsstruktur mit klarer Rollentrennung
 - Sortierbare Teilnehmer-Tabelle mit Frist-Ampelsystem
 - Terminliste mit farblicher Hervorhebung
 
-<img width="1269" height="919" alt="Bildschirmfoto 2026-03-25 um 00 36 25" src="https://github.com/user-attachments/assets/99b41860-45a7-40e5-b4f5-7fd8204885a4" />
+<img width="1274" height="899" alt="Bildschirmfoto 2026-03-25 um 00 30 01" src="https://github.com/user-attachments/assets/2b75aedb-4b7c-4d2f-ad59-ea2607cf4633" />
 
 
 ### Teilnehmer-Detail
