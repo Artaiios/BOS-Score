@@ -6,7 +6,7 @@ Webanwendung zur Verwaltung von Leistungsabzeichen-Übungen (LAZ) für Freiwilli
 
 ## Funktionen
 
-### Öffentliches Dashboard
+### Dashboard
 - Gruppenfortschritt mit Fortschrittsbalken
 - Frist-Countdown-Karten für zwei konfigurierbare Fristen
 - Nächster Termin mit Wetter-Vorhersage (Open-Meteo API)
