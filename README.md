@@ -5,15 +5,17 @@ Webanwendung zur Verwaltung von Leistungsabzeichen-Übungen (LAZ) für Freiwilli
 ![PHP](https://img.shields.io/badge/PHP-8.0+-blue) ![MySQL](https://img.shields.io/badge/MySQL-5.7+-orange) ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.x-38bdf8) ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
+<img width="1274" height="899" alt="Bildschirmfoto 2026-03-25 um 00 30 01" src="https://github.com/user-attachments/assets/736cde8e-2363-405a-86d3-056f926db575" />
+---
 
 ## Architektur
 
-Die Anwendung hat eine zweistufige Verwaltungsstruktur mit klarer Rollentrennung:
+Die Anwendung hat eine dreistufige Verwaltungsstruktur mit klarer Rollentrennung:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                     🔑 SERVER-ADMIN                              │
-│                  admin.php?token={...}                            │
+│                  admin.php?token={...}                           │
 │                                                                  │
 │  • Events erstellen / löschen          • Globale Einstellungen   │
 │  • Admin-URLs verwalten & vergeben     • Organisationsname       │
@@ -23,7 +25,7 @@ Die Anwendung hat eine zweistufige Verwaltungsstruktur mit klarer Rollentrennung
 │          │                                       │               │
 │          ▼                                       ▼               │
 │  ┌──────────────────────┐          ┌──────────────────────┐      │
-│  │  🔑 EVENT-ADMIN       │          │  🔑 EVENT-ADMIN       │      │
+│  │  🔑 EVENT-ADMIN (GF) │          │  🔑 EVENT-ADMIN (GF) │      │
 │  │  ?event=...&admin=...│          │  ?event=...&admin=...│      │
 │  │                      │          │                      │      │
 │  │  • Teilnehmer        │          │  • Teilnehmer        │      │
@@ -34,7 +36,7 @@ Die Anwendung hat eine zweistufige Verwaltungsstruktur mit klarer Rollentrennung
 │  │  • Einstellungen     │          │  • Einstellungen     │      │
 │  │  • Audit-Log         │          │  • Audit-Log         │      │
 │  ├──────────────────────┤          ├──────────────────────┤      │
-│  │  🌐 DASHBOARD         │          │  🌐 DASHBOARD         │      │
+│  │  🌐 DASHBOARD        │          │  🌐 DASHBOARD        │      │
 │  │  ?event=...          │          │  ?event=...          │      │
 │  │                      │          │                      │      │
 │  │  • Frist-Countdowns  │          │  • Frist-Countdowns  │      │
@@ -43,18 +45,18 @@ Die Anwendung hat eine zweistufige Verwaltungsstruktur mit klarer Rollentrennung
 │  │  • Terminliste       │          │  • Terminliste       │      │
 │  │  • Teilnehmer-Tabelle│          │  • Teilnehmer-Tabelle│      │
 │  ├──────────────────────┤          ├──────────────────────┤      │
-│  │  👤 TEILNEHMER        │          │  👤 TEILNEHMER        │      │
+│  │  👤 TEILNEHMER       │          │  👤 TEILNEHMER       │      │
 │  │  ?event=...&member=..│          │  ?event=...&member=..│      │
 │  │                      │          │                      │      │
 │  │  • Fortschritt       │          │  • Fortschritt       │      │
 │  │  • Entschuldigung    │          │  • Entschuldigung    │      │
 │  │  • Strafenliste      │          │  • Strafenliste      │      │
 │  └──────────────────────┘          └──────────────────────┘      │
-│       Event A (z.B. LAZ Bronze)        Event B (z.B. LAZ Silber) │
+│  Event A (z.B. LAZ Bronze)         Event B (z.B. LAZ Silber)     │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Server-Admin** — Erstellt und verwaltet Events, vergibt Admin-URLs an Verantwortliche.
+**Server-Admin** — Erstellt und verwaltet Events, vergibt Admin-URLs der Events an Verantwortliche wie Gruppenführer.
 
 **Event-Admin** — Verwaltet ein einzelnes Event: Teilnehmer, Termine, Anwesenheit, Strafen. Erhält eine geheime Token-URL vom Server-Admin.
 
@@ -66,7 +68,7 @@ Die Anwendung hat eine zweistufige Verwaltungsstruktur mit klarer Rollentrennung
 
 ## Funktionen
 
-### Server-Admin (`admin.php`)
+### Server-Admin
 - Events erstellen mit konfigurierbaren Fristen und optionalem Strafenkatalog-Template
 - Event-URLs (Dashboard + Admin) direkt einsehen und kopieren
 - Globaler Organisationsname (pro Event überschreibbar)
@@ -75,7 +77,10 @@ Die Anwendung hat eine zweistufige Verwaltungsstruktur mit klarer Rollentrennung
 - Globales Audit-Log über alle Events
 - Events archivieren und löschen
 
-### Event-Admin (`index.php?event=...&admin=...`)
+  <img width="1277" height="868" alt="Bildschirmfoto 2026-03-25 um 15 45 05" src="https://github.com/user-attachments/assets/dfe0d261-6536-4591-b869-802e770f602f" />
+
+
+### Event-Admin / Gruppenführer
 - Teilnehmer verwalten (einzeln + Bulk-Import)
 - Termine verwalten (einzeln + Bulk-Import)
 - Anwesenheit eintragen (aufklappbare Terminliste, Live-Save pro Klick)
@@ -84,8 +89,17 @@ Die Anwendung hat eine zweistufige Verwaltungsstruktur mit klarer Rollentrennung
 - Event-Einstellungen: Name, Fristen, Übungsdauer, Wetter-Standort
 - Frist 1 (Zwischenziel) optional aktivierbar
 - Audit-Log mit Filtern und CSV-Export
+  
+<img width="1286" height="799" alt="Bildschirmfoto 2026-03-25 um 00 29 10" src="https://github.com/user-attachments/assets/0754ff6f-5e5b-451a-bcab-c1aeaade966b" />
 
-### Dashboard (`index.php?event=...`)
+
+<img width="1309" height="682" alt="Bildschirmfoto 2026-03-25 um 00 28 31" src="https://github.com/user-attachments/assets/b395202f-7144-411a-b1b1-45ee022b2999" />
+
+
+<img width="1270" height="534" alt="Bildschirmfoto 2026-03-25 um 15 54 42" src="https://github.com/user-attachments/assets/2d19f498-c7fc-4da5-bcbe-8903fc890200" />
+
+
+### Dashboard
 - Frist-Countdown-Karten (Hauptfrist + optionales Zwischenziel)
 - Nächster Termin mit Wetter-Vorhersage (Open-Meteo API)
 - „Mein Status"-Widget (Cookie-basiert) mit persönlicher Ampel
@@ -93,11 +107,17 @@ Die Anwendung hat eine zweistufige Verwaltungsstruktur mit klarer Rollentrennung
 - Sortierbare Teilnehmer-Tabelle mit Frist-Ampelsystem
 - Terminliste mit farblicher Hervorhebung
 
-### Teilnehmer-Detail (`index.php?event=...&member=...`)
+<img width="1269" height="919" alt="Bildschirmfoto 2026-03-25 um 00 36 25" src="https://github.com/user-attachments/assets/99b41860-45a7-40e5-b4f5-7fd8204885a4" />
+
+
+### Teilnehmer-Detail
 - Fortschrittsbalken für aktive Fristen
 - Donut-Diagramm (Anwesend / Entschuldigt / Fehlend / Ausstehend)
 - Entschuldigung setzen und zurückziehen (vor Übungsbeginn)
 - Persönliche Strafenliste
+
+<img width="1269" height="919" alt="Bildschirmfoto 2026-03-25 um 00 36 25" src="https://github.com/user-attachments/assets/1353479b-e074-4dc7-bcf0-ae9b9c306c59" />
+
 
 ---
 
