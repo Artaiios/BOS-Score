@@ -6,14 +6,21 @@ AddDefaultCharset UTF-8
 # Verzeichnislisting deaktivieren
 Options -Indexes
 
-# PHP-Fehler nicht anzeigen (Produktion)
-php_flag display_errors off
-php_flag log_errors on
+# Schutz sensibler Dateien – direkter Zugriff blockiert
+<Files "config.php">
+    Order Allow,Deny
+    Deny from all
+</Files>
 
-# Schutz sensibler Dateien
-<FilesMatch "\.(php|ini|log)$">
-    # config.php und db.php nur serverseitig ausführbar
-</FilesMatch>
+<Files "db.php">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+<Files "config.example.php">
+    Order Allow,Deny
+    Deny from all
+</Files>
 
 # Cache für statische Dateien
 <IfModule mod_expires.c>
