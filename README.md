@@ -238,6 +238,10 @@ Falls du von einer Version vor v1.7 kommst, wird beim ersten Durchlauf ein Serve
 | Startseite (optional) | `index.php` |
 
 ---
+### Changelog
+Vollständige Änderungshistorie im [Changelog](CHANGELOG.md)
+
+---
 
 ## Lizenz
 
