@@ -11,63 +11,6 @@ http://test.laz.patzeller.com/admin.php?token=fc92485a04f25688fce1e499cba3ed6eef
 
 ---
 <img width="1277" height="1689" alt="Bildschirmfoto 2026-03-26 um 15 02 29" src="https://github.com/user-attachments/assets/39daa290-b0fe-4173-8915-eef78fc8ce96" />
----
-
-## Architektur
-
-Die Anwendung hat eine dreistufige Verwaltungsstruktur mit klarer Rollentrennung:
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                     🔑 SERVER-ADMIN                               │
-│                  admin.php?token={...}                           │
-│                                                                  │
-│  • Events erstellen / löschen          • Globale Einstellungen   │
-│  • Admin-URLs verwalten & vergeben     • Organisationsname       │
-│  • Übersicht aller Events              • Admin E-Mail            │
-│  • Globales Audit-Log                  • Öffentliche Startseite  │
-├──────────┬───────────────────────────────────────┬───────────────┤
-│          │                                       │               │
-│          ▼                                       ▼               │
-│  ┌──────────────────────┐          ┌──────────────────────┐      │
-│  │  🔑 EVENT-ADMIN (GF)  │          │  🔑 EVENT-ADMIN (GF) │      │
-│  │  ?event=...&admin=...│          │  ?event=...&admin=...│      │
-│  │                      │          │                      │      │
-│  │  • Teilnehmer        │          │  • Teilnehmer        │      │
-│  │  • Termine           │          │  • Termine           │      │
-│  │  • Anwesenheit       │          │  • Anwesenheit       │      │
-│  │  • Strafenkatalog    │          │  • Strafenkatalog    │      │
-│  │  • Strafen/Strafkasse│          │  • Strafen/Strafkasse│      │
-│  │  • Einstellungen     │          │  • Einstellungen     │      │
-│  │  • Audit-Log         │          │  • Audit-Log         │      │
-│  ├──────────────────────┤          ├──────────────────────┤      │
-│  │  🌐 DASHBOARD         │          │  🌐 DASHBOARD        │      │
-│  │  ?event=...          │          │  ?event=...          │      │
-│  │                      │          │                      │      │
-│  │  • Frist-Countdowns  │          │  • Frist-Countdowns  │      │
-│  │  • Wetter            │          │  • Wetter            │      │
-│  │  • Mein Status       │          │  • Mein Status       │      │
-│  │  • Terminliste       │          │  • Terminliste       │      │
-│  │  • Teilnehmer-Tabelle│          │  • Teilnehmer-Tabelle│      │
-│  ├──────────────────────┤          ├──────────────────────┤      │
-│  │  👤 TEILNEHMER        │          │  👤 TEILNEHMER       │      │
-│  │  ?event=...&member=..│          │  ?event=...&member=..│      │
-│  │                      │          │                      │      │
-│  │  • Fortschritt       │          │  • Fortschritt       │      │
-│  │  • Entschuldigung    │          │  • Entschuldigung    │      │
-│  │  • Strafenliste      │          │  • Strafenliste      │      │
-│  └──────────────────────┘          └──────────────────────┘      │
-│  Event A (z.B. LAZ Bronze)         Event B (z.B. LAZ Silber)     │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-**Server-Admin** — Erstellt und verwaltet Events, vergibt Admin-URLs der Events an Verantwortliche wie Gruppenführer.
-
-**Event-Admin** — Verwaltet ein einzelnes Event: Teilnehmer, Termine, Anwesenheit, Strafen. Erhält eine geheime Token-URL vom Server-Admin.
-
-**Dashboard** — Öffentliche Übersicht eines Events. Wird per URL an Teilnehmer weitergegeben.
-
-**Teilnehmer-Detail** — Persönliche Seite pro Teilnehmer mit Fortschritt und Entschuldigungsfunktion.
 
 ---
 
@@ -137,6 +80,63 @@ Die Anwendung hat eine dreistufige Verwaltungsstruktur mit klarer Rollentrennung
 | Hosting | Shared Webspace (z.B. IONOS/1&1), kein Node.js nötig |
 
 **Sicherheit:** PDO Prepared Statements, CSRF-Tokens, XSS-Schutz, Token-basierter Zugang (kein Login-System).
+
+---
+## Architektur
+
+Die Anwendung hat eine dreistufige Verwaltungsstruktur mit klarer Rollentrennung:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     🔑 SERVER-ADMIN                               │
+│                  admin.php?token={...}                           │
+│                                                                  │
+│  • Events erstellen / löschen          • Globale Einstellungen   │
+│  • Admin-URLs verwalten & vergeben     • Organisationsname       │
+│  • Übersicht aller Events              • Admin E-Mail            │
+│  • Globales Audit-Log                  • Öffentliche Startseite  │
+├──────────┬───────────────────────────────────────┬───────────────┤
+│          │                                       │               │
+│          ▼                                       ▼               │
+│  ┌──────────────────────┐          ┌──────────────────────┐      │
+│  │  🔑 EVENT-ADMIN (GF)  │          │  🔑 EVENT-ADMIN (GF) │      │
+│  │  ?event=...&admin=...│          │  ?event=...&admin=...│      │
+│  │                      │          │                      │      │
+│  │  • Teilnehmer        │          │  • Teilnehmer        │      │
+│  │  • Termine           │          │  • Termine           │      │
+│  │  • Anwesenheit       │          │  • Anwesenheit       │      │
+│  │  • Strafenkatalog    │          │  • Strafenkatalog    │      │
+│  │  • Strafen/Strafkasse│          │  • Strafen/Strafkasse│      │
+│  │  • Einstellungen     │          │  • Einstellungen     │      │
+│  │  • Audit-Log         │          │  • Audit-Log         │      │
+│  ├──────────────────────┤          ├──────────────────────┤      │
+│  │  🌐 DASHBOARD         │          │  🌐 DASHBOARD        │      │
+│  │  ?event=...          │          │  ?event=...          │      │
+│  │                      │          │                      │      │
+│  │  • Frist-Countdowns  │          │  • Frist-Countdowns  │      │
+│  │  • Wetter            │          │  • Wetter            │      │
+│  │  • Mein Status       │          │  • Mein Status       │      │
+│  │  • Terminliste       │          │  • Terminliste       │      │
+│  │  • Teilnehmer-Tabelle│          │  • Teilnehmer-Tabelle│      │
+│  ├──────────────────────┤          ├──────────────────────┤      │
+│  │  👤 TEILNEHMER        │          │  👤 TEILNEHMER       │      │
+│  │  ?event=...&member=..│          │  ?event=...&member=..│      │
+│  │                      │          │                      │      │
+│  │  • Fortschritt       │          │  • Fortschritt       │      │
+│  │  • Entschuldigung    │          │  • Entschuldigung    │      │
+│  │  • Strafenliste      │          │  • Strafenliste      │      │
+│  └──────────────────────┘          └──────────────────────┘      │
+│  Event A (z.B. LAZ Bronze)         Event B (z.B. LAZ Silber)     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Server-Admin** — Erstellt und verwaltet Events, vergibt Admin-URLs der Events an Verantwortliche wie Gruppenführer.
+
+**Event-Admin** — Verwaltet ein einzelnes Event: Teilnehmer, Termine, Anwesenheit, Strafen. Erhält eine geheime Token-URL vom Server-Admin.
+
+**Dashboard** — Öffentliche Übersicht eines Events. Wird per URL an Teilnehmer weitergegeben.
+
+**Teilnehmer-Detail** — Persönliche Seite pro Teilnehmer mit Fortschritt und Entschuldigungsfunktion.
 
 ---
 
