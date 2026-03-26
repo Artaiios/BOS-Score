@@ -433,7 +433,16 @@ require __DIR__ . '/partials/header.php';
 
                     $att = $sessionAttendance[$s['id']] ?? ['present' => 0, 'excused' => 0, 'absent' => 0];
                 ?>
-                <tr style="<?= $trStyle ?>border-bottom: 1px solid #e5e7eb;">
+                <?php
+                    $hasRoleRow = false;
+                    if ($dashRolesEnabled) {
+                        $roleAvail = get_session_role_availability($s['id'], $event['id']);
+                        $hasRoleRow = !empty($roleAvail);
+                    }
+                    // Hauptzeile: dünner Rand wenn Rollen folgen, dicker Rand wenn keine
+                    $rowBorder = $hasRoleRow ? 'border-bottom: none;' : 'border-bottom: 2px solid #d1d5db;';
+                ?>
+                <tr style="<?= $trStyle ?><?= $rowBorder ?>">
                     <td class="px-4 py-3 font-medium">
                         <?= format_date($s['session_date']) ?>
                         <?php if ($isToday && !$ended): ?><span class="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full ml-1">HEUTE</span><?php endif; ?>
@@ -446,12 +455,9 @@ require __DIR__ . '/partials/header.php';
                     <td class="px-4 py-3 text-center"><?= $att['excused'] ?: '-' ?></td>
                     <td class="px-4 py-3 text-center"><?= $att['absent'] ?: '-' ?></td>
                 </tr>
-                <?php if ($dashRolesEnabled):
-                    $roleAvail = get_session_role_availability($s['id'], $event['id']);
-                    if (!empty($roleAvail)):
-                ?>
-                <tr style="<?= $trStyle ?>border-bottom: 1px solid #e5e7eb;">
-                    <td colspan="7" class="px-4 py-1.5">
+                <?php if ($hasRoleRow): ?>
+                <tr style="<?= $trStyle ?>border-bottom: 2px solid #d1d5db;">
+                    <td colspan="7" class="px-4 pt-0 pb-2">
                         <div class="flex flex-wrap gap-1">
                             <?php foreach ($roleAvail as $ra): ?>
                             <span class="text-xs px-1.5 py-0.5 rounded <?= $ra['ok'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 font-bold' ?>">
@@ -461,7 +467,7 @@ require __DIR__ . '/partials/header.php';
                         </div>
                     </td>
                 </tr>
-                <?php endif; endif; ?>
+                <?php endif; ?>
                 <?php endforeach; ?>
             </tbody>
         </table>
