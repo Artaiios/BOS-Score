@@ -15,6 +15,9 @@ $penaltyByMember = get_penalty_stats_by_member($event['id']);
 $adminToken = $event['admin_token'];
 $tab = $_GET['tab'] ?? 'overview';
 $isArchived = ($event['status'] === 'archived');
+$sessionDurationGlobal = (int)($event['session_duration_hours'] ?? 3);
+$nextSessionAdmin = get_next_session($sessions, $sessionDurationGlobal);
+$adminRolesEnabled = (bool)($event['roles_enabled'] ?? false);
 
 $pageTitle = 'Admin – ' . $event['name'];
 require __DIR__ . '/partials/header.php';
@@ -35,15 +38,13 @@ require __DIR__ . '/partials/header.php';
     <?php
     $tabs = [
         'overview' => '📊 Übersicht',
-        'members' => '👥 Teilnehmer',
-        'sessions' => '📅 Termine',
         'attendance' => '✅ Anwesenheit',
-        'penalty_types' => '📋 Strafenkatalog',
         'penalties' => '💰 Strafen',
-        'penalty_stats' => '📊 Strafkasse',
-        'audit' => '📝 Audit-Log',
+        'sessions' => '📅 Termine',
+        'members' => '👥 Teilnehmer',
         'roles' => '🏷️ Rollen',
         'settings' => '⚙️ Einstellungen',
+        'audit' => '📝 Audit-Log',
     ];
     foreach ($tabs as $key => $label):
         $active = $tab === $key;
@@ -62,7 +63,40 @@ require __DIR__ . '/partials/header.php';
 // ══════════════════════════════════════════════════════════════
 if ($tab === 'overview'):
     $memberStats = get_member_stats($event['id']);
+
+    // Wetter für nächsten Termin
+    $ovWeather = null;
+    if ($nextSessionAdmin) {
+        $wLat = (float)($event['weather_lat'] ?? 0);
+        $wLng = (float)($event['weather_lng'] ?? 0);
+        if ($wLat != 0 && $wLng != 0) {
+            $weatherCacheFile = sys_get_temp_dir() . '/laz_weather_' . $event['id'] . '_' . $nextSessionAdmin['session_date'] . '.json';
+            $weatherCacheAge = file_exists($weatherCacheFile) ? (time() - filemtime($weatherCacheFile)) : PHP_INT_MAX;
+            if ($weatherCacheAge < 3600 && file_exists($weatherCacheFile)) {
+                $ovWeather = json_decode(file_get_contents($weatherCacheFile), true);
+            } else {
+                $wUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' . $wLat . '&longitude=' . $wLng
+                    . '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode'
+                    . '&timezone=Europe/Berlin&start_date=' . $nextSessionAdmin['session_date'] . '&end_date=' . $nextSessionAdmin['session_date'];
+                $ctx = stream_context_create(['http' => ['timeout' => 3, 'ignore_errors' => true]]);
+                $wJson = @file_get_contents($wUrl, false, $ctx);
+                if ($wJson) {
+                    $wData = json_decode($wJson, true);
+                    if (isset($wData['daily'])) {
+                        $wd = $wData['daily'];
+                        $wmoCode = $wd['weathercode'][0] ?? -1;
+                        $wmoMap = [0=>['☀️','Klar'],1=>['🌤️','Überwiegend klar'],2=>['⛅','Teilweise bewölkt'],3=>['☁️','Bewölkt'],45=>['🌫️','Nebel'],48=>['🌫️','Reifnebel'],51=>['🌦️','Leichter Nieselregen'],53=>['🌦️','Nieselregen'],55=>['🌧️','Starker Nieselregen'],61=>['🌦️','Leichter Regen'],63=>['🌧️','Regen'],65=>['🌧️','Starker Regen'],71=>['🌨️','Leichter Schnee'],73=>['❄️','Schnee'],75=>['❄️','Starker Schnee'],80=>['🌦️','Leichte Regenschauer'],81=>['🌧️','Regenschauer'],82=>['⛈️','Starke Regenschauer'],95=>['⛈️','Gewitter'],96=>['⛈️','Gewitter mit Hagel']];
+                        $wInfo = $wmoMap[$wmoCode] ?? ['🌡️','Unbekannt'];
+                        $ovWeather = ['emoji'=>$wInfo[0],'desc'=>$wInfo[1],'temp_max'=>round($wd['temperature_2m_max'][0]),'temp_min'=>round($wd['temperature_2m_min'][0]),'rain_prob'=>$wd['precipitation_probability_max'][0]??0];
+                        @file_put_contents($weatherCacheFile, json_encode($ovWeather));
+                    }
+                }
+            }
+        }
+    }
 ?>
+
+<!-- Statistik-Karten -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
         <div class="text-2xl font-bold text-gray-900"><?= count($activeMembers) ?></div>
@@ -82,7 +116,116 @@ if ($tab === 'overview'):
     </div>
 </div>
 
+<!-- Nächster Termin + Wetter -->
+<?php if ($nextSessionAdmin): ?>
 <div class="bg-white rounded-xl shadow-sm border p-5 mb-6">
+    <h3 class="font-bold text-gray-800 mb-3">📅 Nächster Termin</h3>
+    <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div class="flex-1">
+            <div class="text-lg font-bold text-gray-900">
+                <?= format_weekday($nextSessionAdmin['session_date']) ?>, <?= format_date($nextSessionAdmin['session_date']) ?> – <?= format_time($nextSessionAdmin['session_time']) ?> Uhr
+            </div>
+            <?php if ($nextSessionAdmin['comment']): ?>
+                <div class="text-sm text-gray-500 mt-1"><?= e($nextSessionAdmin['comment']) ?></div>
+            <?php endif; ?>
+            <?php if ($adminRolesEnabled):
+                $ovRoleAvail = get_session_role_availability($nextSessionAdmin['id'], $event['id']);
+                if (!empty($ovRoleAvail)):
+            ?>
+            <div class="flex flex-wrap gap-1 mt-2">
+                <?php foreach ($ovRoleAvail as $ra): ?>
+                <span class="text-xs px-1.5 py-0.5 rounded <?= $ra['ok'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 font-bold' ?>">
+                    <?= e($ra['name']) ?> <?= $ra['available'] ?>/<?= $ra['total'] ?> <?= $ra['ok'] ? '✅' : '❌' ?>
+                </span>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; endif; ?>
+        </div>
+        <?php if ($ovWeather): ?>
+        <div class="bg-gray-50 rounded-lg p-4 text-center shrink-0" style="min-width: 140px;">
+            <div class="text-3xl"><?= $ovWeather['emoji'] ?></div>
+            <div class="font-semibold text-gray-800 text-sm"><?= $ovWeather['desc'] ?></div>
+            <div class="text-gray-600 text-sm"><?= $ovWeather['temp_min'] ?>° / <?= $ovWeather['temp_max'] ?>°C</div>
+            <div class="text-xs text-gray-400">🌧️ <?= $ovWeather['rain_prob'] ?>%</div>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Strafkasse -->
+<?php
+    $hasAnyPenalties = array_sum(array_column($penaltyByType, 'count')) > 0;
+?>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="bg-white rounded-xl shadow-sm border p-5">
+        <h3 class="font-bold text-gray-800 mb-4">💰 Strafkasse nach Typ</h3>
+        <?php if ($hasAnyPenalties): ?>
+        <div style="max-width: 240px; margin: 0 auto 1rem;">
+            <canvas id="chartPenaltyType"></canvas>
+        </div>
+        <?php endif; ?>
+        <div class="divide-y text-sm">
+            <?php
+            $totalCount = 0; $totalSum = 0;
+            foreach ($penaltyByType as $s):
+                $count = (int)$s['count']; $total = (float)$s['total'];
+                $totalCount += $count; $totalSum += $total;
+            ?>
+            <div class="py-2 flex justify-between items-center <?= $count === 0 ? 'text-gray-300' : '' ?>">
+                <span><?= e($s['description']) ?>
+                    <?php if ($count > 0): ?><span class="inline-flex items-center justify-center bg-red-100 text-red-700 text-xs font-bold rounded-full px-2 py-0.5 ml-1"><?= $count ?>×</span><?php endif; ?>
+                </span>
+                <span class="font-semibold <?= $count > 0 ? 'text-red-600' : 'text-gray-300' ?>"><?= format_currency($total) ?></span>
+            </div>
+            <?php endforeach; ?>
+            <?php if ($totalCount > 0): ?>
+            <div class="py-2 flex justify-between items-center font-bold">
+                <span>Gesamt (<?= $totalCount ?> Strafen)</span>
+                <span class="text-red-700"><?= format_currency($totalSum) ?></span>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border p-5">
+        <h3 class="font-bold text-gray-800 mb-4">💰 Strafkasse nach Teilnehmer</h3>
+        <?php if ($hasAnyPenalties): ?>
+        <div style="min-height: <?= max(200, count($penaltyByMember) * 28) ?>px">
+            <canvas id="chartPenaltyMember"></canvas>
+        </div>
+        <?php else: ?>
+        <div class="text-center text-gray-400 py-6"><div class="text-3xl mb-2">👥</div><p>Noch keine Strafen vergeben.</p></div>
+        <?php endif; ?>
+    </div>
+</div>
+<?php if ($hasAnyPenalties): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var ptData = <?= json_encode(array_values(array_filter($penaltyByType, fn($s) => (int)$s['count'] > 0))) ?>;
+    if (ptData.length > 0) {
+        new Chart(document.getElementById('chartPenaltyType'), {
+            type: 'doughnut', data: {
+                labels: ptData.map(function(d) { return d.description + ' (' + d.count + '×)'; }),
+                datasets: [{ data: ptData.map(function(d) { return parseInt(d.count); }), backgroundColor: ['#dc2626','#f59e0b','#22c55e','#3b82f6','#8b5cf6','#ec4899','#14b8a6'], borderWidth: 0 }]
+            }, options: { responsive: true, cutout: '55%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8 } } } }
+        });
+    }
+    var pmData = <?= json_encode(array_values(array_filter($penaltyByMember, fn($s) => (float)$s['total'] > 0))) ?>;
+    if (pmData.length > 0) {
+        pmData.sort(function(a, b) { return b.total - a.total; });
+        new Chart(document.getElementById('chartPenaltyMember'), {
+            type: 'bar', data: {
+                labels: pmData.map(function(d) { return d.name; }),
+                datasets: [{ label: 'Strafen (€)', data: pmData.map(function(d) { return parseFloat(d.total); }), backgroundColor: '#dc2626', borderRadius: 4 }]
+            }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { color: '#f3f4f6' } }, y: { grid: { display: false } } } }
+        });
+    }
+});
+</script>
+<?php endif; ?>
+
+<!-- Links -->
+<div class="bg-white rounded-xl shadow-sm border p-5">
     <h3 class="font-bold text-gray-800 mb-2">🔗 Links</h3>
     <div class="space-y-3">
         <div>
@@ -261,7 +404,6 @@ elseif ($tab === 'sessions'):
 elseif ($tab === 'attendance'):
     $sessionDuration = (int)($event['session_duration_hours'] ?? 3);
     $attRolesEnabled = (bool)($event['roles_enabled'] ?? false);
-    $attRoles = $attRolesEnabled ? get_roles($event['id']) : [];
 
     // Alle Anwesenheitsdaten vorladen
     $allAttData = [];
@@ -277,52 +419,34 @@ elseif ($tab === 'attendance'):
         ];
     }
 
-    // Auto-expand: nächster Termin oder per URL-Parameter
-    $autoExpandId = isset($_GET['session_id']) ? (int)$_GET['session_id'] : 0;
-    if (!$autoExpandId) {
-        $nextS = get_next_session($sessions, $sessionDuration);
-        $autoExpandId = $nextS ? $nextS['id'] : 0;
+    // Termine in 3 Gruppen aufteilen
+    $pastAtt = []; $nextAtt = null; $futureAtt = [];
+    $nf = false;
+    foreach ($sessions as $s) {
+        $s['_ended'] = is_session_ended($s, $sessionDuration);
+        if (!$nf && !$s['_ended']) { $nextAtt = $s; $nf = true; }
+        elseif ($s['_ended']) { $pastAtt[] = $s; }
+        else { $futureAtt[] = $s; }
     }
+
+    // Auto-expand per URL-Parameter
+    $autoExpandId = isset($_GET['session_id']) ? (int)$_GET['session_id'] : ($nextAtt ? $nextAtt['id'] : 0);
 ?>
 
-<!-- Terminliste mit aufklappbaren Anwesenheitsformularen -->
-<div class="bg-white rounded-xl shadow-sm border overflow-hidden">
-    <div class="px-5 py-4 border-b" style="background-color: #e5e7eb;">
-        <div class="flex items-center justify-between">
-            <h3 class="font-bold text-gray-700">✅ Anwesenheit verwalten</h3>
-            <span class="text-xs text-gray-500"><?= count($activeMembers) ?> Teilnehmer · <?= count($sessions) ?> Termine</span>
-        </div>
-    </div>
+<?php
+// ── Helper: Rendert eine Session-Zeile + aufklappbares Panel ──
+function render_att_session($s, $sData, $activeMembers, $attRolesEnabled, $eventId, $isExpanded, $isNext) {
+    $ended = $s['_ended'] ?? false;
+    $isToday = $s['session_date'] === date('Y-m-d');
+    $totalMarked = $sData['present'] + $sData['excused'] + $sData['absent'];
 
-    <?php
-    $nextFound = false;
-    foreach ($sessions as $s):
-        $ended = is_session_ended($s, $sessionDuration);
-        $isToday = $s['session_date'] === date('Y-m-d');
-        $isNext = false;
-        if (!$nextFound && !$ended) {
-            $isNext = true;
-            $nextFound = true;
-        }
-
-        $sData = $allAttData[$s['id']];
-        $totalMarked = $sData['present'] + $sData['excused'] + $sData['absent'];
-        $isExpanded = ($s['id'] === $autoExpandId);
-
-        // Zeilen-Style
-        if ($isNext) {
-            $rowStyle = 'background-color: #fed7aa; border-left: 5px solid #ea580c; font-weight: 600;';
-        } elseif ($isToday && !$ended) {
-            $rowStyle = 'background-color: #fee2e2; font-weight: 600;';
-        } elseif ($ended) {
-            $rowStyle = 'background-color: #f3f4f6; color: #9ca3af;';
-        } else {
-            $rowStyle = '';
-        }
-    ?>
-    <!-- Session-Zeile -->
+    if ($isNext) { $rowStyle = 'background-color: #fed7aa; border-left: 5px solid #ea580c; font-weight: 600;'; }
+    elseif ($isToday && !$ended) { $rowStyle = 'background-color: #fee2e2; font-weight: 600;'; }
+    elseif ($ended) { $rowStyle = 'background-color: #f3f4f6; color: #9ca3af;'; }
+    else { $rowStyle = ''; }
+?>
     <div style="<?= $rowStyle ?>border-bottom: 1px solid #e5e7eb; cursor: pointer;"
-         onclick="toggleAttendance(<?= $s['id'] ?>)" id="session-header-<?= $s['id'] ?>">
+         onclick="toggleAttendance(<?= $s['id'] ?>)">
         <div class="px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
             <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-sm" id="expand-icon-<?= $s['id'] ?>"><?= $isExpanded ? '▼' : '▶' ?></span>
@@ -335,7 +459,7 @@ elseif ($tab === 'attendance'):
                 <?php if ($isToday && !$ended): ?>
                     <span style="font-size: 10px; background-color: #dc2626; color: white; padding: 1px 6px; border-radius: 9999px;">HEUTE</span>
                 <?php endif; ?>
-                <?php if ($isNext && !$isToday): ?>
+                <?php if ($isNext): ?>
                     <span style="font-size: 10px; background-color: #ea580c; color: white; padding: 1px 6px; border-radius: 9999px;">NÄCHSTER</span>
                 <?php endif; ?>
             </div>
@@ -348,8 +472,9 @@ elseif ($tab === 'attendance'):
                     <span class="text-gray-400">Noch nicht erfasst</span>
                 <?php endif; ?>
             </div>
-            <?php if ($attRolesEnabled && !empty($attRoles)):
-                $roleAvail = get_session_role_availability($s['id'], $event['id']);
+            <?php if ($attRolesEnabled):
+                $roleAvail = get_session_role_availability($s['id'], $eventId);
+                if (!empty($roleAvail)):
             ?>
             <div class="flex flex-wrap gap-1 mt-1">
                 <?php foreach ($roleAvail as $ra): ?>
@@ -358,11 +483,9 @@ elseif ($tab === 'attendance'):
                 </span>
                 <?php endforeach; ?>
             </div>
-            <?php endif; ?>
+            <?php endif; endif; ?>
         </div>
     </div>
-
-    <!-- Aufklappbares Anwesenheitsformular -->
     <div id="att-panel-<?= $s['id'] ?>" class="<?= $isExpanded ? '' : 'hidden' ?>" style="border-bottom: 2px solid #dc2626; background-color: #fafafa;">
         <div class="px-5 py-3 flex flex-wrap items-center justify-between gap-2 border-b bg-gray-50">
             <span class="text-sm font-semibold text-gray-600">
@@ -381,7 +504,7 @@ elseif ($tab === 'attendance'):
                 $mStatus = $mAtt['status'] ?? '';
                 $excusedBy = $mAtt['excused_by'] ?? '';
             ?>
-            <div class="px-5 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2" id="att-row-<?= $s['id'] ?>-<?= $m['id'] ?>">
+            <div class="px-5 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div class="flex items-center gap-2 flex-wrap">
                     <span class="font-medium text-gray-800 text-sm"><?= e($m['name']) ?></span>
                     <?php if ($mAtt && $mStatus === 'excused' && $mAtt['excused_at']): ?>
@@ -410,119 +533,61 @@ elseif ($tab === 'attendance'):
             <?php endforeach; ?>
         </div>
     </div>
-    <?php endforeach; ?>
-</div>
+<?php } // end render_att_session ?>
 
-<?php
-// ══════════════════════════════════════════════════════════════
-// Tab: Strafenkatalog
-// ══════════════════════════════════════════════════════════════
-elseif ($tab === 'penalty_types'):
-?>
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div class="lg:col-span-1">
-        <div class="bg-white rounded-xl shadow-sm border p-5">
-            <h3 class="font-bold text-gray-800 mb-4">Straftyp hinzufügen</h3>
-            <div>
-                <div class="space-y-3">
-                    <input type="text" id="ptDescription" placeholder="Beschreibung" required class="w-full border rounded-lg p-2 text-sm">
-                    <input type="number" id="ptAmount" placeholder="Betrag (€)" step="0.50" min="0.50" required class="w-full border rounded-lg p-2 text-sm">
-                    <div>
-                        <label class="text-xs text-gray-500">Aktiv ab (optional):</label>
-                        <input type="date" id="ptActiveFrom" class="w-full border rounded-lg p-2 text-sm">
-                    </div>
-                    <div>
-                        <label class="text-xs text-gray-500">Sortierung (niedrig = weiter oben):</label>
-                        <input type="number" id="ptSortOrder" placeholder="0" value="0" class="w-full border rounded-lg p-2 text-sm mt-1">
-                    </div>
-                    <button type="button" onclick="addPenaltyType()" class="w-full bg-red-600 text-white py-2 rounded-lg font-semibold hover:bg-red-700 transition">Hinzufügen</button>
-                </div>
-            </div>
+<div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+    <div class="px-5 py-4 border-b" style="background-color: #e5e7eb;">
+        <div class="flex items-center justify-between">
+            <h3 class="font-bold text-gray-700">✅ Anwesenheit verwalten</h3>
+            <span class="text-xs text-gray-500"><?= count($activeMembers) ?> Teilnehmer · <?= count($sessions) ?> Termine</span>
         </div>
     </div>
 
-    <div class="lg:col-span-2">
-        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
-            <div class="px-5 py-4 border-b flex items-center justify-between">
-                <h3 class="font-bold text-gray-800">Strafenkatalog</h3>
-                <span class="text-xs text-gray-300" title="Admin-View Version">v<?= APP_VERSION ?></span>
-            </div>
-            <div class="divide-y">
-                <?php if (empty($penaltyTypes)): ?>
-                    <div class="px-5 py-8 text-center text-gray-400">Keine Straftypen angelegt.</div>
-                <?php endif; ?>
-                <?php foreach ($penaltyTypes as $pt): ?>
-                <div class="px-5 py-3" id="pt-row-<?= $pt['id'] ?>">
-                    <div class="flex flex-col sm:flex-row sm:items-center gap-2">
-                        <!-- Info -->
-                        <div class="flex-1 min-w-0" id="pt-display-<?= $pt['id'] ?>">
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span class="inline-flex items-center justify-center bg-gray-100 text-gray-500 text-xs font-mono rounded w-8 h-6"
-                                      title="Sortierung"><?= (int)$pt['sort_order'] ?></span>
-                                <span class="font-medium <?= $pt['active'] ? 'text-gray-800' : 'text-gray-400' ?>"><?= e($pt['description']) ?></span>
-                                <span class="text-red-600 font-semibold"><?= format_currency($pt['amount']) ?></span>
-                                <?php if ($pt['active_from']): ?>
-                                    <span class="text-xs text-gray-400">(ab <?= format_date($pt['active_from']) ?>)</span>
-                                <?php endif; ?>
-                                <?php if (!$pt['active']): ?>
-                                    <span class="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">Inaktiv</span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                        <!-- Buttons -->
-                        <div class="flex gap-2 shrink-0" id="pt-buttons-<?= $pt['id'] ?>">
-                            <button onclick="editPenaltyType(<?= $pt['id'] ?>)"
-                                    class="text-gray-400 hover:text-blue-600 text-xs transition">✏️ Bearbeiten</button>
-                            <button onclick="deletePenaltyType(<?= $pt['id'] ?>)"
-                                    class="text-gray-400 hover:text-red-600 text-xs transition">🗑️</button>
-                        </div>
-                    </div>
-                    <!-- Inline-Edit (hidden by default) -->
-                    <div class="hidden mt-3 bg-gray-50 rounded-lg p-3" id="pt-edit-<?= $pt['id'] ?>">
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-                            <div>
-                                <label class="text-xs text-gray-500">Sortierung:</label>
-                                <input type="number" id="pt-sort-<?= $pt['id'] ?>" value="<?= (int)$pt['sort_order'] ?>"
-                                       class="w-full border rounded-lg p-1.5 text-sm mt-0.5">
-                            </div>
-                            <div class="col-span-2 sm:col-span-1">
-                                <label class="text-xs text-gray-500">Betrag (€):</label>
-                                <input type="number" id="pt-amount-<?= $pt['id'] ?>" value="<?= $pt['amount'] ?>" step="0.50" min="0.50"
-                                       class="w-full border rounded-lg p-1.5 text-sm mt-0.5">
-                            </div>
-                            <div>
-                                <label class="text-xs text-gray-500">Aktiv ab:</label>
-                                <input type="date" id="pt-from-<?= $pt['id'] ?>" value="<?= $pt['active_from'] ?? '' ?>"
-                                       class="w-full border rounded-lg p-1.5 text-sm mt-0.5">
-                            </div>
-                            <div class="flex items-end">
-                                <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-                                    <input type="checkbox" id="pt-active-<?= $pt['id'] ?>" <?= $pt['active'] ? 'checked' : '' ?> class="rounded">
-                                    Aktiv
-                                </label>
-                            </div>
-                        </div>
-                        <div class="mb-2">
-                            <label class="text-xs text-gray-500">Beschreibung:</label>
-                            <input type="text" id="pt-desc-<?= $pt['id'] ?>" value="<?= e($pt['description']) ?>"
-                                   class="w-full border rounded-lg p-1.5 text-sm mt-0.5">
-                        </div>
-                        <div class="flex gap-2">
-                            <button onclick="savePenaltyType(<?= $pt['id'] ?>)"
-                                    class="bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-700 transition">
-                                💾 Speichern
-                            </button>
-                            <button onclick="cancelEditPenaltyType(<?= $pt['id'] ?>)"
-                                    class="bg-gray-200 text-gray-600 px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-gray-300 transition">
-                                Abbrechen
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <?php endforeach; ?>
+    <!-- Vergangene Termine -->
+    <?php if (!empty($pastAtt)): ?>
+    <div style="border-bottom: 2px solid #d1d5db;">
+        <div onclick="document.getElementById('attPastBody').classList.toggle('hidden'); var i=document.getElementById('attPastIcon'); i.textContent=i.textContent==='▶'?'▼':'▶';"
+             class="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition" style="background-color: #f3f4f6;">
+            <div class="flex items-center gap-2">
+                <span id="attPastIcon" class="text-xs text-gray-400">▶</span>
+                <span class="font-semibold text-gray-500">Vergangene Termine</span>
+                <span class="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full"><?= count($pastAtt) ?></span>
             </div>
         </div>
+        <div id="attPastBody" class="hidden">
+            <?php foreach ($pastAtt as $s):
+                $s['_ended'] = true;
+                render_att_session($s, $allAttData[$s['id']], $activeMembers, $attRolesEnabled, $event['id'], ($s['id'] === $autoExpandId), false);
+            endforeach; ?>
+        </div>
     </div>
+    <?php endif; ?>
+
+    <!-- Nächster Termin -->
+    <?php if ($nextAtt):
+        $nextAtt['_ended'] = false;
+        render_att_session($nextAtt, $allAttData[$nextAtt['id']], $activeMembers, $attRolesEnabled, $event['id'], true, true);
+    endif; ?>
+
+    <!-- Kommende Termine -->
+    <?php if (!empty($futureAtt)): ?>
+    <div>
+        <div onclick="document.getElementById('attFutureBody').classList.toggle('hidden'); var i=document.getElementById('attFutureIcon'); i.textContent=i.textContent==='▶'?'▼':'▶';"
+             class="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
+            <div class="flex items-center gap-2">
+                <span id="attFutureIcon" class="text-xs text-gray-400">▶</span>
+                <span class="font-semibold text-gray-600">Kommende Termine</span>
+                <span class="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full"><?= count($futureAtt) ?></span>
+            </div>
+        </div>
+        <div id="attFutureBody" class="hidden">
+            <?php foreach ($futureAtt as $s):
+                $s['_ended'] = false;
+                render_att_session($s, $allAttData[$s['id']], $activeMembers, $attRolesEnabled, $event['id'], ($s['id'] === $autoExpandId), false);
+            endforeach; ?>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <?php
@@ -584,130 +649,6 @@ elseif ($tab === 'penalties'):
         </div>
     </div>
 </div>
-
-<?php
-// ══════════════════════════════════════════════════════════════
-// Tab: Strafkasse-Statistik
-// ══════════════════════════════════════════════════════════════
-elseif ($tab === 'penalty_stats'):
-    $hasAnyPenalties = array_sum(array_column($penaltyByType, 'count')) > 0;
-?>
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <div class="bg-white rounded-xl shadow-sm border p-5">
-        <h3 class="font-bold text-gray-800 mb-4">Nach Straftyp</h3>
-        <?php if ($hasAnyPenalties): ?>
-        <div style="max-width: 280px; margin: 0 auto 1rem;">
-            <canvas id="chartPenaltyType"></canvas>
-        </div>
-        <?php else: ?>
-        <div class="text-center text-gray-400 py-6 mb-4">
-            <div class="text-3xl mb-2">📊</div>
-            <p>Noch keine Strafen vergeben.</p>
-        </div>
-        <?php endif; ?>
-        <div class="divide-y text-sm">
-            <?php
-            $totalCount = 0;
-            $totalSum = 0;
-            foreach ($penaltyByType as $s):
-                $count = (int)$s['count'];
-                $total = (float)$s['total'];
-                $totalCount += $count;
-                $totalSum += $total;
-            ?>
-            <div class="py-2 flex justify-between items-center <?= $count === 0 ? 'text-gray-300' : '' ?>">
-                <span>
-                    <?= e($s['description']) ?>
-                    <?php if ($count > 0): ?>
-                        <span class="inline-flex items-center justify-center bg-red-100 text-red-700 text-xs font-bold rounded-full px-2 py-0.5 ml-1"><?= $count ?>×</span>
-                    <?php endif; ?>
-                </span>
-                <span class="font-semibold <?= $count > 0 ? 'text-red-600' : 'text-gray-300' ?>"><?= format_currency($total) ?></span>
-            </div>
-            <?php endforeach; ?>
-            <?php if ($totalCount > 0): ?>
-            <div class="py-2 flex justify-between items-center font-bold">
-                <span>Gesamt (<?= $totalCount ?> Strafen)</span>
-                <span class="text-red-700"><?= format_currency($totalSum) ?></span>
-            </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <div class="bg-white rounded-xl shadow-sm border p-5">
-        <h3 class="font-bold text-gray-800 mb-4">Nach Teilnehmer</h3>
-        <?php if ($hasAnyPenalties): ?>
-        <div style="min-height: <?= max(200, count($penaltyByMember) * 28) ?>px">
-            <canvas id="chartPenaltyMember"></canvas>
-        </div>
-        <?php else: ?>
-        <div class="text-center text-gray-400 py-6">
-            <div class="text-3xl mb-2">👥</div>
-            <p>Noch keine Strafen vergeben.</p>
-        </div>
-        <?php endif; ?>
-    </div>
-</div>
-
-<?php if ($hasAnyPenalties): ?>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Kreisdiagramm – basiert auf ANZAHL der Strafen
-    const ptData = <?= json_encode(array_values(array_filter($penaltyByType, fn($s) => (int)$s['count'] > 0))) ?>;
-    if (ptData.length > 0) {
-        new Chart(document.getElementById('chartPenaltyType'), {
-            type: 'doughnut',
-            data: {
-                labels: ptData.map(d => d.description + ' (' + d.count + '×)'),
-                datasets: [{
-                    data: ptData.map(d => parseInt(d.count)),
-                    backgroundColor: ['#dc2626','#f59e0b','#22c55e','#3b82f6','#8b5cf6','#ec4899','#14b8a6'],
-                    borderWidth: 0,
-                }]
-            },
-            options: {
-                responsive: true,
-                cutout: '55%',
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 10, padding: 8 } },
-                    tooltip: {
-                        callbacks: {
-                            label: function(ctx) {
-                                const d = ptData[ctx.dataIndex];
-                                return d.count + '× – ' + parseFloat(d.total).toFixed(2).replace('.', ',') + ' €';
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    // Balkendiagramm
-    const pmData = <?= json_encode(array_values(array_filter($penaltyByMember, fn($s) => (float)$s['total'] > 0))) ?>;
-    if (pmData.length > 0) {
-        pmData.sort((a, b) => b.total - a.total);
-        new Chart(document.getElementById('chartPenaltyMember'), {
-            type: 'bar',
-            data: {
-                labels: pmData.map(d => d.name),
-                datasets: [{
-                    label: 'Strafen (€)',
-                    data: pmData.map(d => parseFloat(d.total)),
-                    backgroundColor: '#dc2626',
-                    borderRadius: 4,
-                }]
-            },
-            options: {
-                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { x: { beginAtZero: true, grid: { color: '#f3f4f6' } }, y: { grid: { display: false } } }
-            }
-        });
-    }
-});
-</script>
-<?php endif; ?>
 
 <?php
 // ══════════════════════════════════════════════════════════════
@@ -779,103 +720,206 @@ elseif ($tab === 'settings'):
     erstellt werden.</p>
 </div>
 
-<!-- Einstellungen -->
-<div class="max-w-2xl">
+<!-- Einstellungen: 2-Spalten-Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <!-- Karte: Grunddaten -->
     <div class="bg-white rounded-xl shadow-sm border p-5">
-        <h3 class="font-bold text-gray-800 mb-4">Event-Einstellungen</h3>
-        <div>
-            <div class="space-y-4">
+        <h4 class="font-bold text-gray-800 mb-4">📋 Event-Grunddaten</h4>
+        <div class="space-y-3">
+            <div>
+                <label class="text-xs font-semibold text-gray-500">Name:</label>
+                <input type="text" id="eventName" value="<?= e($event['name']) ?>" class="w-full border rounded-lg p-2 text-sm mt-1">
+            </div>
+            <div>
+                <label class="text-xs font-semibold text-gray-500">Status:</label>
+                <select id="eventStatus" class="w-full border rounded-lg p-2 text-sm mt-1">
+                    <option value="active" <?= $event['status'] === 'active' ? 'selected' : '' ?>>Aktiv</option>
+                    <option value="archived" <?= $event['status'] === 'archived' ? 'selected' : '' ?>>Archiviert</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-xs font-semibold text-gray-500">Organisationsname (optional):</label>
+                <input type="text" id="eventOrgName" value="<?= e($event['organization_name'] ?? '') ?>"
+                       placeholder="Leer = globaler Standard (<?= e(get_server_config('organization_name', '')) ?>)"
+                       class="w-full border rounded-lg p-2 text-sm mt-1">
+                <p class="text-xs text-gray-400 mt-0.5">Überschreibt den globalen Organisationsnamen nur für dieses Event.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Karte: Fristen -->
+    <div class="bg-white rounded-xl shadow-sm border p-5">
+        <h4 class="font-bold text-gray-800 mb-4">📅 Fristen</h4>
+        <div class="space-y-3">
+            <h5 class="font-semibold text-gray-600 text-sm">Hauptfrist (Abnahme)</h5>
+            <div>
+                <label class="text-xs text-gray-500">Anzeigename:</label>
+                <input type="text" id="d2Name" value="<?= e($event['deadline_2_name'] ?? 'Frist 2') ?>" placeholder="z.B. Abnahme, Finale..." class="w-full border rounded-lg p-2 text-sm mt-1">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="text-xs font-semibold text-gray-500">Name:</label>
-                    <input type="text" id="eventName" value="<?= e($event['name']) ?>" required class="w-full border rounded-lg p-2 text-sm mt-1">
+                    <label class="text-xs text-gray-500">Datum:</label>
+                    <input type="date" id="d2Date" value="<?= $event['deadline_2_date'] ?>" class="w-full border rounded-lg p-2 text-sm mt-1">
                 </div>
                 <div>
-                    <label class="text-xs font-semibold text-gray-500">Status:</label>
-                    <select id="eventStatus" class="w-full border rounded-lg p-2 text-sm mt-1">
-                        <option value="active" <?= $event['status'] === 'active' ? 'selected' : '' ?>>Aktiv</option>
-                        <option value="archived" <?= $event['status'] === 'archived' ? 'selected' : '' ?>>Archiviert</option>
-                    </select>
+                    <label class="text-xs text-gray-500">Mindest-Teilnahmen:</label>
+                    <input type="number" id="d2Count" value="<?= $event['deadline_2_count'] ?>" min="1" class="w-full border rounded-lg p-2 text-sm mt-1">
                 </div>
-                <div>
-                    <label class="text-xs font-semibold text-gray-500">Organisationsname (optional):</label>
-                    <input type="text" id="eventOrgName" value="<?= e($event['organization_name'] ?? '') ?>"
-                           placeholder="Leer = globaler Standard (<?= e(get_server_config('organization_name', '')) ?>)"
-                           class="w-full border rounded-lg p-2 text-sm mt-1">
-                    <p class="text-xs text-gray-400 mt-0.5">Überschreibt den globalen Organisationsnamen nur für dieses Event.</p>
-                </div>
-                <hr>
-                <h4 class="font-semibold text-gray-700">Hauptfrist (Frist 2)</h4>
+            </div>
+            <hr>
+            <div>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" id="d1Enabled" <?= ($event['deadline_1_enabled'] ?? 1) ? 'checked' : '' ?> class="rounded"
+                           onchange="document.getElementById('d1Fields').classList.toggle('hidden', !this.checked)">
+                    <span class="font-semibold text-gray-600 text-sm">Zwischenziel (Frist 1) aktivieren</span>
+                </label>
+            </div>
+            <div id="d1Fields" class="<?= ($event['deadline_1_enabled'] ?? 1) ? '' : 'hidden' ?> space-y-3">
                 <div>
                     <label class="text-xs text-gray-500">Anzeigename:</label>
-                    <input type="text" id="d2Name" value="<?= e($event['deadline_2_name'] ?? 'Frist 2') ?>" placeholder="z.B. Abnahme, Finale..." class="w-full border rounded-lg p-2 text-sm mt-1">
+                    <input type="text" id="d1Name" value="<?= e($event['deadline_1_name'] ?? 'Frist 1') ?>" placeholder="z.B. Zwischenziel, Halbzeit..." class="w-full border rounded-lg p-2 text-sm mt-1">
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="text-xs text-gray-500">Datum:</label>
-                        <input type="date" id="d2Date" value="<?= $event['deadline_2_date'] ?>" class="w-full border rounded-lg p-2 text-sm mt-1">
+                        <input type="date" id="d1Date" value="<?= $event['deadline_1_date'] ?>" class="w-full border rounded-lg p-2 text-sm mt-1">
                     </div>
                     <div>
                         <label class="text-xs text-gray-500">Mindest-Teilnahmen:</label>
-                        <input type="number" id="d2Count" value="<?= $event['deadline_2_count'] ?>" min="1" class="w-full border rounded-lg p-2 text-sm mt-1">
+                        <input type="number" id="d1Count" value="<?= $event['deadline_1_count'] ?>" min="1" class="w-full border rounded-lg p-2 text-sm mt-1">
                     </div>
                 </div>
-                <hr>
-                <div>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="d1Enabled" <?= ($event['deadline_1_enabled'] ?? 1) ? 'checked' : '' ?> class="rounded"
-                               onchange="document.getElementById('d1Fields').classList.toggle('hidden', !this.checked)">
-                        <span class="font-semibold text-gray-700">Zwischenziel (Frist 1) aktivieren</span>
-                    </label>
-                </div>
-                <div id="d1Fields" class="<?= ($event['deadline_1_enabled'] ?? 1) ? '' : 'hidden' ?> space-y-3">
-                    <div>
-                        <label class="text-xs text-gray-500">Anzeigename:</label>
-                        <input type="text" id="d1Name" value="<?= e($event['deadline_1_name'] ?? 'Frist 1') ?>" placeholder="z.B. Zwischenziel, Halbzeit..." class="w-full border rounded-lg p-2 text-sm mt-1">
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="text-xs text-gray-500">Datum:</label>
-                            <input type="date" id="d1Date" value="<?= $event['deadline_1_date'] ?>" class="w-full border rounded-lg p-2 text-sm mt-1">
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-500">Mindest-Teilnahmen:</label>
-                            <input type="number" id="d1Count" value="<?= $event['deadline_1_count'] ?>" min="1" class="w-full border rounded-lg p-2 text-sm mt-1">
-                        </div>
-                    </div>
-                </div>
-                <hr>
-                <h4 class="font-semibold text-gray-700">Übungsdauer</h4>
-                <div>
-                    <label class="text-xs text-gray-500">Standard-Übungsdauer (Stunden):</label>
-                    <p class="text-xs text-gray-400 mt-0.5 mb-1">Bestimmt, ab wann eine Übung als beendet gilt und der "Nächste Termin" wechselt.</p>
-                    <input type="number" id="sessionDuration" value="<?= (int)($event['session_duration_hours'] ?? 3) ?>" min="1" max="12" class="w-full border rounded-lg p-2 text-sm">
-                </div>
-                <hr>
-                <h4 class="font-semibold text-gray-700">Wetter-Standort</h4>
-                <div>
-                    <label class="text-xs text-gray-500">Ort (für Wettervorhersage im Dashboard):</label>
-                    <div class="flex gap-2 mt-1">
-                        <input type="text" id="weatherQuery" placeholder="Ortsname oder PLZ eingeben..."
-                               value="<?= e($event['weather_location'] ?? '') ?>"
-                               class="flex-1 border rounded-lg p-2 text-sm">
-                        <button type="button" onclick="geocodeLocation()"
-                                class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-600 transition shrink-0">
-                            🔍 Suchen
-                        </button>
-                    </div>
-                    <div id="geocodeResults" class="mt-2 hidden"></div>
-                    <input type="hidden" id="weatherLocation" value="<?= e($event['weather_location'] ?? '') ?>">
-                    <input type="hidden" id="weatherLat" value="<?= (float)($event['weather_lat'] ?? 48.81) ?>">
-                    <input type="hidden" id="weatherLng" value="<?= (float)($event['weather_lng'] ?? 8.945) ?>">
-                    <p class="text-xs text-gray-400 mt-1" id="weatherCurrentInfo">
-                        Aktuell: <?= e($event['weather_location'] ?? '') ?>
-                        (<?= number_format((float)($event['weather_lat'] ?? 48.81), 4) ?>°N,
-                         <?= number_format((float)($event['weather_lng'] ?? 8.945), 4) ?>°E)
-                    </p>
-                </div>
-                <button type="button" onclick="updateEvent()" class="w-full bg-red-600 text-white py-2 rounded-lg font-semibold hover:bg-red-700 transition">
-                    💾 Speichern
+            </div>
+        </div>
+    </div>
+
+    <!-- Karte: Übungsdauer -->
+    <div class="bg-white rounded-xl shadow-sm border p-5">
+        <h4 class="font-bold text-gray-800 mb-4">⏱️ Übungsdauer</h4>
+        <div>
+            <label class="text-xs text-gray-500">Standard-Übungsdauer (Stunden):</label>
+            <input type="number" id="sessionDuration" value="<?= (int)($event['session_duration_hours'] ?? 3) ?>" min="1" max="12" class="w-full border rounded-lg p-2 text-sm mt-1">
+            <p class="text-xs text-gray-400 mt-1">Bestimmt, ab wann eine Übung als beendet gilt und der "Nächste Termin" wechselt.</p>
+        </div>
+    </div>
+
+    <!-- Karte: Wetter-Standort -->
+    <div class="bg-white rounded-xl shadow-sm border p-5">
+        <h4 class="font-bold text-gray-800 mb-4">🌤️ Wetter-Standort</h4>
+        <div>
+            <label class="text-xs text-gray-500">Ort (für Wettervorhersage im Dashboard):</label>
+            <div class="flex gap-2 mt-1">
+                <input type="text" id="weatherQuery" placeholder="Ortsname oder PLZ eingeben..."
+                       value="<?= e($event['weather_location'] ?? '') ?>"
+                       class="flex-1 border rounded-lg p-2 text-sm">
+                <button type="button" onclick="geocodeLocation()"
+                        class="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-600 transition shrink-0">
+                    🔍
                 </button>
+            </div>
+            <div id="geocodeResults" class="mt-2 hidden"></div>
+            <input type="hidden" id="weatherLocation" value="<?= e($event['weather_location'] ?? '') ?>">
+            <input type="hidden" id="weatherLat" value="<?= (float)($event['weather_lat'] ?? 0) ?>">
+            <input type="hidden" id="weatherLng" value="<?= (float)($event['weather_lng'] ?? 0) ?>">
+            <p class="text-xs text-gray-400 mt-1" id="weatherCurrentInfo">
+                <?php if ($event['weather_location'] ?? ''): ?>
+                    Aktuell: <?= e($event['weather_location']) ?>
+                    (<?= number_format((float)($event['weather_lat'] ?? 0), 4) ?>°N,
+                     <?= number_format((float)($event['weather_lng'] ?? 0), 4) ?>°E)
+                <?php else: ?>
+                    Noch kein Standort konfiguriert.
+                <?php endif; ?>
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Speichern-Button (volle Breite) -->
+<div class="mb-6">
+    <button type="button" onclick="updateEvent()" class="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition text-sm">
+        💾 Event-Einstellungen speichern
+    </button>
+</div>
+
+<!-- Strafenkatalog (volle Breite) -->
+<div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+    <div class="px-5 py-4 border-b" style="background-color: #e5e7eb;">
+        <h3 class="font-bold text-gray-700">📋 Strafenkatalog</h3>
+    </div>
+    <div class="divide-y">
+        <?php if (empty($penaltyTypes)): ?>
+            <div class="px-5 py-8 text-center text-gray-400">Keine Straftypen angelegt.</div>
+        <?php endif; ?>
+        <?php foreach ($penaltyTypes as $pt): ?>
+        <div class="px-5 py-3" id="pt-row-<?= $pt['id'] ?>">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div class="flex-1 min-w-0" id="pt-display-<?= $pt['id'] ?>">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="inline-flex items-center justify-center bg-gray-100 text-gray-500 text-xs font-mono rounded w-8 h-6" title="Sortierung"><?= (int)$pt['sort_order'] ?></span>
+                        <span class="font-medium <?= $pt['active'] ? 'text-gray-800' : 'text-gray-400' ?>"><?= e($pt['description']) ?></span>
+                        <span class="text-red-600 font-semibold"><?= format_currency($pt['amount']) ?></span>
+                        <?php if ($pt['active_from']): ?>
+                            <span class="text-xs text-gray-400">(ab <?= format_date($pt['active_from']) ?>)</span>
+                        <?php endif; ?>
+                        <?php if (!$pt['active']): ?>
+                            <span class="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">Inaktiv</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div class="flex gap-2 shrink-0" id="pt-buttons-<?= $pt['id'] ?>">
+                    <button onclick="editPenaltyType(<?= $pt['id'] ?>)" class="text-gray-400 hover:text-blue-600 text-xs transition">✏️ Bearbeiten</button>
+                    <button onclick="deletePenaltyType(<?= $pt['id'] ?>)" class="text-gray-400 hover:text-red-600 text-xs transition">🗑️</button>
+                </div>
+            </div>
+            <div class="hidden mt-3 bg-gray-50 rounded-lg p-3" id="pt-edit-<?= $pt['id'] ?>">
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                    <div>
+                        <label class="text-xs text-gray-500">Sortierung:</label>
+                        <input type="number" id="pt-sort-<?= $pt['id'] ?>" value="<?= (int)$pt['sort_order'] ?>" class="w-full border rounded-lg p-1.5 text-sm mt-0.5">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500">Betrag (€):</label>
+                        <input type="number" id="pt-amount-<?= $pt['id'] ?>" value="<?= $pt['amount'] ?>" step="0.50" min="0.50" class="w-full border rounded-lg p-1.5 text-sm mt-0.5">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500">Aktiv ab:</label>
+                        <input type="date" id="pt-from-<?= $pt['id'] ?>" value="<?= $pt['active_from'] ?? '' ?>" class="w-full border rounded-lg p-1.5 text-sm mt-0.5">
+                    </div>
+                    <div class="flex items-end">
+                        <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+                            <input type="checkbox" id="pt-active-<?= $pt['id'] ?>" <?= $pt['active'] ? 'checked' : '' ?> class="rounded"> Aktiv
+                        </label>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="text-xs text-gray-500">Beschreibung:</label>
+                    <input type="text" id="pt-desc-<?= $pt['id'] ?>" value="<?= e($pt['description']) ?>" class="w-full border rounded-lg p-1.5 text-sm mt-0.5">
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="savePenaltyType(<?= $pt['id'] ?>)" class="bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-700 transition">💾 Speichern</button>
+                    <button onclick="cancelEditPenaltyType(<?= $pt['id'] ?>)" class="bg-gray-200 text-gray-600 px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-gray-300 transition">Abbrechen</button>
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <!-- Straftyp hinzufügen -->
+    <div class="px-5 py-4 border-t bg-gray-50">
+        <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
+            <div class="sm:col-span-2">
+                <label class="text-xs text-gray-500">Beschreibung:</label>
+                <input type="text" id="ptDescription" placeholder="Beschreibung" class="w-full border rounded-lg p-2 text-sm mt-0.5">
+            </div>
+            <div>
+                <label class="text-xs text-gray-500">Betrag (€):</label>
+                <input type="number" id="ptAmount" placeholder="5.00" step="0.50" min="0.50" class="w-full border rounded-lg p-2 text-sm mt-0.5">
+            </div>
+            <div>
+                <label class="text-xs text-gray-500">Sort:</label>
+                <input type="number" id="ptSortOrder" value="0" class="w-full border rounded-lg p-2 text-sm mt-0.5">
+            </div>
+            <div>
+                <button type="button" onclick="addPenaltyType()" class="w-full bg-red-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition">+ Hinzufügen</button>
             </div>
         </div>
     </div>

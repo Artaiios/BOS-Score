@@ -390,88 +390,195 @@ require __DIR__ . '/partials/header.php';
     </div>
 </div>
 
-<!-- Terminliste -->
+<!-- Terminliste (Accordion) -->
+<?php
+// Termine in 3 Gruppen aufteilen
+$pastSessions = [];
+$nextSessionItem = null;
+$futureSessions = [];
+$nextFoundDash = false;
+foreach ($sessions as $s) {
+    $s['_ended'] = is_session_ended($s, $sessionDuration);
+    if (!$nextFoundDash && !$s['_ended']) {
+        $nextSessionItem = $s;
+        $nextFoundDash = true;
+    } elseif ($s['_ended']) {
+        $pastSessions[] = $s;
+    } else {
+        $futureSessions[] = $s;
+    }
+}
+?>
 <div class="bg-white rounded-xl shadow-sm border mb-8 overflow-hidden">
     <div class="px-5 py-4 border-b">
-        <h2 class="font-bold text-gray-800">📅 Alle Übungstermine</h2>
+        <h2 class="font-bold text-gray-800">📅 Übungstermine</h2>
     </div>
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead style="background-color: #e5e7eb;">
-                <tr>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-700">Datum</th>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-700 hidden sm:table-cell">Tag</th>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-700">Uhrzeit</th>
-                    <th class="px-4 py-3 text-left font-semibold text-gray-700 hidden md:table-cell">Kommentar</th>
-                    <th class="px-4 py-3 text-center font-semibold text-gray-700">✅</th>
-                    <th class="px-4 py-3 text-center font-semibold text-gray-700">🟡</th>
-                    <th class="px-4 py-3 text-center font-semibold text-gray-700">❌</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php
-                $nextFound = false;
-                foreach ($sessions as $s):
-                    $ended = is_session_ended($s, $sessionDuration);
-                    $isToday = $s['session_date'] === date('Y-m-d');
 
-                    $isNext = false;
-                    if (!$nextFound && !$ended) {
-                        $isNext = true;
-                        $nextFound = true;
-                    }
-
-                    if ($isNext) {
-                        $trStyle = 'background-color: #fed7aa; border-left: 5px solid #ea580c; font-weight: 600;';
-                    } elseif ($isToday && !$ended) {
-                        $trStyle = 'background-color: #fee2e2; font-weight: 600;';
-                    } elseif ($ended) {
-                        $trStyle = 'background-color: #f3f4f6; color: #9ca3af;';
-                    } else {
-                        $trStyle = '';
-                    }
-
-                    $att = $sessionAttendance[$s['id']] ?? ['present' => 0, 'excused' => 0, 'absent' => 0];
-                ?>
-                <?php
-                    $hasRoleRow = false;
-                    if ($dashRolesEnabled) {
-                        $roleAvail = get_session_role_availability($s['id'], $event['id']);
-                        $hasRoleRow = !empty($roleAvail);
-                    }
-                    // Hauptzeile: dünner Rand wenn Rollen folgen, dicker Rand wenn keine
-                    $rowBorder = $hasRoleRow ? 'border-bottom: none;' : 'border-bottom: 2px solid #d1d5db;';
-                ?>
-                <tr style="<?= $trStyle ?><?= $rowBorder ?>">
-                    <td class="px-4 py-3 font-medium">
-                        <?= format_date($s['session_date']) ?>
-                        <?php if ($isToday && !$ended): ?><span class="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full ml-1">HEUTE</span><?php endif; ?>
-                        <?php if ($isNext && !$isToday): ?><span style="font-size: 11px; background-color: #ea580c; color: white; padding: 2px 8px; border-radius: 9999px; margin-left: 4px; font-weight: 600;">NÄCHSTER</span><?php endif; ?>
-                    </td>
-                    <td class="px-4 py-3 hidden sm:table-cell"><?= format_weekday($s['session_date']) ?></td>
-                    <td class="px-4 py-3"><?= format_time($s['session_time']) ?> Uhr</td>
-                    <td class="px-4 py-3 hidden md:table-cell" style="<?= $ended ? 'color: #9ca3af;' : 'color: #6b7280;' ?>"><?= e($s['comment']) ?></td>
-                    <td class="px-4 py-3 text-center"><?= $att['present'] ?: '-' ?></td>
-                    <td class="px-4 py-3 text-center"><?= $att['excused'] ?: '-' ?></td>
-                    <td class="px-4 py-3 text-center"><?= $att['absent'] ?: '-' ?></td>
-                </tr>
-                <?php if ($hasRoleRow): ?>
-                <tr style="<?= $trStyle ?>border-bottom: 2px solid #d1d5db;">
-                    <td colspan="7" class="px-4 pt-0 pb-2">
-                        <div class="flex flex-wrap gap-1">
-                            <?php foreach ($roleAvail as $ra): ?>
-                            <span class="text-xs px-1.5 py-0.5 rounded <?= $ra['ok'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 font-bold' ?>">
-                                <?= e($ra['name']) ?> <?= $ra['available'] ?>/<?= $ra['total'] ?> <?= $ra['ok'] ? '✅' : '❌' ?>
-                            </span>
-                            <?php endforeach; ?>
-                        </div>
-                    </td>
-                </tr>
-                <?php endif; ?>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+    <!-- ═══ Vergangene Termine (Accordion) ═══ -->
+    <?php if (!empty($pastSessions)): ?>
+    <div style="border-bottom: 2px solid #d1d5db;">
+        <div onclick="document.getElementById('pastSessionsBody').classList.toggle('hidden'); var icon = document.getElementById('pastIcon'); icon.textContent = icon.textContent === '▶' ? '▼' : '▶';"
+             class="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition" style="background-color: #f3f4f6;">
+            <div class="flex items-center gap-2">
+                <span id="pastIcon" class="text-xs text-gray-400">▶</span>
+                <span class="font-semibold text-gray-500">Vergangene Termine</span>
+                <span class="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full"><?= count($pastSessions) ?></span>
+            </div>
+        </div>
+        <div id="pastSessionsBody" class="hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <?php foreach ($pastSessions as $s):
+                        $att = $sessionAttendance[$s['id']] ?? ['present' => 0, 'excused' => 0, 'absent' => 0];
+                        $hasRoleRow = false;
+                        if ($dashRolesEnabled) {
+                            $roleAvail = get_session_role_availability($s['id'], $event['id']);
+                            $hasRoleRow = !empty($roleAvail);
+                        }
+                    ?>
+                    <tr style="background-color: #f3f4f6; color: #9ca3af; <?= $hasRoleRow ? '' : 'border-bottom: 2px solid #d1d5db;' ?>">
+                        <td class="px-4 py-2.5 font-medium"><?= format_date($s['session_date']) ?></td>
+                        <td class="px-4 py-2.5 hidden sm:table-cell"><?= format_weekday($s['session_date']) ?></td>
+                        <td class="px-4 py-2.5"><?= format_time($s['session_time']) ?> Uhr</td>
+                        <td class="px-4 py-2.5 hidden md:table-cell"><?= e($s['comment']) ?></td>
+                        <td class="px-4 py-2.5 text-center"><?= $att['present'] ?: '-' ?></td>
+                        <td class="px-4 py-2.5 text-center"><?= $att['excused'] ?: '-' ?></td>
+                        <td class="px-4 py-2.5 text-center"><?= $att['absent'] ?: '-' ?></td>
+                    </tr>
+                    <?php if ($hasRoleRow): ?>
+                    <tr style="background-color: #f3f4f6; color: #9ca3af; border-bottom: 2px solid #d1d5db;">
+                        <td colspan="7" class="px-4 pt-0 pb-2">
+                            <div class="flex flex-wrap gap-1">
+                                <?php foreach ($roleAvail as $ra): ?>
+                                <span class="text-xs px-1.5 py-0.5 rounded <?= $ra['ok'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 font-bold' ?>">
+                                    <?= e($ra['name']) ?> <?= $ra['available'] ?>/<?= $ra['total'] ?> <?= $ra['ok'] ? '✅' : '❌' ?>
+                                </span>
+                                <?php endforeach; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+                    <?php endforeach; ?>
+                </table>
+            </div>
+        </div>
     </div>
+    <?php endif; ?>
+
+    <!-- ═══ Nächster Termin (immer sichtbar) ═══ -->
+    <?php if ($nextSessionItem):
+        $s = $nextSessionItem;
+        $isToday = $s['session_date'] === date('Y-m-d');
+        $att = $sessionAttendance[$s['id']] ?? ['present' => 0, 'excused' => 0, 'absent' => 0];
+        $hasRoleRow = false;
+        if ($dashRolesEnabled) {
+            $roleAvail = get_session_role_availability($s['id'], $event['id']);
+            $hasRoleRow = !empty($roleAvail);
+        }
+    ?>
+    <div style="border-bottom: 2px solid #d1d5db;">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead style="background-color: #e5e7eb;">
+                    <tr>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-700">Datum</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-700 hidden sm:table-cell">Tag</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-700">Uhrzeit</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-700 hidden md:table-cell">Kommentar</th>
+                        <th class="px-4 py-3 text-center font-semibold text-gray-700">✅</th>
+                        <th class="px-4 py-3 text-center font-semibold text-gray-700">🟡</th>
+                        <th class="px-4 py-3 text-center font-semibold text-gray-700">❌</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="background-color: #fed7aa; border-left: 5px solid #ea580c; font-weight: 600; <?= $hasRoleRow ? '' : 'border-bottom: 2px solid #d1d5db;' ?>">
+                        <td class="px-4 py-3 font-medium">
+                            <?= format_date($s['session_date']) ?>
+                            <?php if ($isToday): ?><span class="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full ml-1">HEUTE</span><?php endif; ?>
+                            <span style="font-size: 11px; background-color: #ea580c; color: white; padding: 2px 8px; border-radius: 9999px; margin-left: 4px; font-weight: 600;">NÄCHSTER</span>
+                        </td>
+                        <td class="px-4 py-3 hidden sm:table-cell"><?= format_weekday($s['session_date']) ?></td>
+                        <td class="px-4 py-3"><?= format_time($s['session_time']) ?> Uhr</td>
+                        <td class="px-4 py-3 hidden md:table-cell" style="color: #6b7280;"><?= e($s['comment']) ?></td>
+                        <td class="px-4 py-3 text-center"><?= $att['present'] ?: '-' ?></td>
+                        <td class="px-4 py-3 text-center"><?= $att['excused'] ?: '-' ?></td>
+                        <td class="px-4 py-3 text-center"><?= $att['absent'] ?: '-' ?></td>
+                    </tr>
+                    <?php if ($hasRoleRow): ?>
+                    <tr style="background-color: #fed7aa; border-bottom: 2px solid #d1d5db;">
+                        <td colspan="7" class="px-4 pt-0 pb-2">
+                            <div class="flex flex-wrap gap-1">
+                                <?php foreach ($roleAvail as $ra): ?>
+                                <span class="text-xs px-1.5 py-0.5 rounded <?= $ra['ok'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 font-bold' ?>">
+                                    <?= e($ra['name']) ?> <?= $ra['available'] ?>/<?= $ra['total'] ?> <?= $ra['ok'] ? '✅' : '❌' ?>
+                                </span>
+                                <?php endforeach; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php elseif (empty($pastSessions) && empty($futureSessions)): ?>
+    <div class="px-5 py-8 text-center text-gray-400">Noch keine Termine vorhanden.</div>
+    <?php endif; ?>
+
+    <!-- ═══ Kommende Termine (Accordion) ═══ -->
+    <?php if (!empty($futureSessions)): ?>
+    <div>
+        <div onclick="document.getElementById('futureSessionsBody').classList.toggle('hidden'); var icon = document.getElementById('futureIcon'); icon.textContent = icon.textContent === '▶' ? '▼' : '▶';"
+             class="px-5 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition">
+            <div class="flex items-center gap-2">
+                <span id="futureIcon" class="text-xs text-gray-400">▶</span>
+                <span class="font-semibold text-gray-600">Kommende Termine</span>
+                <span class="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full"><?= count($futureSessions) ?></span>
+            </div>
+        </div>
+        <div id="futureSessionsBody" class="hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <?php foreach ($futureSessions as $s):
+                        $isToday = $s['session_date'] === date('Y-m-d');
+                        $att = $sessionAttendance[$s['id']] ?? ['present' => 0, 'excused' => 0, 'absent' => 0];
+                        $hasRoleRow = false;
+                        if ($dashRolesEnabled) {
+                            $roleAvail = get_session_role_availability($s['id'], $event['id']);
+                            $hasRoleRow = !empty($roleAvail);
+                        }
+                    ?>
+                    <tr style="<?= $hasRoleRow ? '' : 'border-bottom: 2px solid #d1d5db;' ?>">
+                        <td class="px-4 py-2.5 font-medium">
+                            <?= format_date($s['session_date']) ?>
+                            <?php if ($isToday): ?><span class="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full ml-1">HEUTE</span><?php endif; ?>
+                        </td>
+                        <td class="px-4 py-2.5 hidden sm:table-cell"><?= format_weekday($s['session_date']) ?></td>
+                        <td class="px-4 py-2.5"><?= format_time($s['session_time']) ?> Uhr</td>
+                        <td class="px-4 py-2.5 hidden md:table-cell" style="color: #6b7280;"><?= e($s['comment']) ?></td>
+                        <td class="px-4 py-2.5 text-center"><?= $att['present'] ?: '-' ?></td>
+                        <td class="px-4 py-2.5 text-center"><?= $att['excused'] ?: '-' ?></td>
+                        <td class="px-4 py-2.5 text-center"><?= $att['absent'] ?: '-' ?></td>
+                    </tr>
+                    <?php if ($hasRoleRow): ?>
+                    <tr style="border-bottom: 2px solid #d1d5db;">
+                        <td colspan="7" class="px-4 pt-0 pb-2">
+                            <div class="flex flex-wrap gap-1">
+                                <?php foreach ($roleAvail as $ra): ?>
+                                <span class="text-xs px-1.5 py-0.5 rounded <?= $ra['ok'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 font-bold' ?>">
+                                    <?= e($ra['name']) ?> <?= $ra['available'] ?>/<?= $ra['total'] ?> <?= $ra['ok'] ? '✅' : '❌' ?>
+                                </span>
+                                <?php endforeach; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+                    <?php endforeach; ?>
+                </table>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <!-- Teilnehmer-Tabelle -->
