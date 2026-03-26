@@ -2,6 +2,30 @@
 
 Alle relevanten Änderungen am LAZ Übungs-Tracker werden in dieser Datei dokumentiert.
 
+## [1.7.2] – 2026-03-26
+
+### Hinzugefügt
+- **Rollen-Feature:** Neuer Admin-Tab „Rollen" mit Toggle zum Aktivieren/Deaktivieren
+  - Rollenkatalog: beliebig viele Rollen definierbar (z.B. Gruppenführer, Maschinist, Mannschaft)
+  - Mehrere Rollen pro Teilnehmer zuweisbar (Toggle-Buttons, Live-Save)
+  - Anwesenheits-Tab: kompakte Rollen-Badges pro Termin (z.B. `GF 1/2 ✅ Masch 0/1 ❌`)
+  - Dashboard Terminliste: Rollen-Zeile unter jedem Termin
+  - Dashboard Teilnehmer-Tabelle: Rollennamen neben dem Teilnehmernamen
+  - Teilnehmer-Detail: Rollen als Badges unter dem Namen
+  - Alle Rollen-Anzeigen nur sichtbar wenn vom Admin aktiviert
+- Neue DB-Tabellen: `roles`, `member_roles`
+- Neue DB-Spalte: `roles_enabled` (in `events`)
+- Neue API-Endpunkte: `add_role`, `delete_role`, `set_member_roles`, `toggle_roles`
+
+## [1.7.1] – 2026-03-25
+
+### Geändert
+- **Archiv-Lesemodus:** Archivierte Events werden im Lesemodus angezeigt statt komplett blockiert
+  - Gelbes Banner „Archiviert" auf Dashboard, Teilnehmerseite und Admin
+  - Admin: Reaktivierungs-Button sichtbar, alle anderen Eingaben/Buttons ausgegraut
+  - API blockiert Schreibzugriffe bei archivierten Events (außer Reaktivierung und CSV-Export)
+  - Teilnehmer-Detailseite: Entschuldigungs-Buttons bei archivierten Events deaktiviert
+
 ## [1.7.0] – 2026-03-25
 
 ### Hinzugefügt
