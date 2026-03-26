@@ -5,9 +5,13 @@ Webanwendung zur Verwaltung von Leistungsabzeichen-Übungen (LAZ) für Freiwilli
 ![PHP](https://img.shields.io/badge/PHP-8.0+-blue) ![MySQL](https://img.shields.io/badge/MySQL-5.7+-orange) ![MariaDB](https://img.shields.io/badge/MariaDB-10.5+-orange) ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.x-38bdf8) ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
-### Live-Demo Dashboard
+### Live-Demo: Dashboard (Read Only)
 
 https://test-laz.patzeller.com/index.php?event=14dfc054e25cf730aae3fd8421355732
+
+### Live-Demo: Event-Admin
+
+https://test-laz.patzeller.com/index.php?event=7c9941e5dee5266b7ee3ee45937dc163&admin=564688490cbf2fb70e192fef72830b338d74b1c6bdfded92
 
 <img width="1277" height="1689" alt="Bildschirmfoto 2026-03-26 um 15 02 29" src="https://github.com/user-attachments/assets/39daa290-b0fe-4173-8915-eef78fc8ce96" />
 
