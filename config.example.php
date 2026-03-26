@@ -13,7 +13,7 @@ define('DB_CHARSET', 'utf8mb4');
 
 // Anwendungs-Einstellungen
 define('APP_NAME', 'LAZ Übungs-Tracker');
-define('APP_VERSION', '1.7.0');
+define('APP_VERSION', '1.7.2');
 define('TIMEZONE', 'Europe/Berlin');
 
 // Setup-Sperre: auf true setzen nach der Ersteinrichtung

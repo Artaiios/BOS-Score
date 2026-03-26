@@ -59,7 +59,7 @@ function get_organization_name(?array $event = null): string {
 // ── Event-Funktionen ────────────────────────────────────────
 
 function get_event_by_public_token(string $token): ?array {
-    $stmt = get_pdo()->prepare("SELECT * FROM events WHERE public_token = ? AND status = 'active'");
+    $stmt = get_pdo()->prepare("SELECT * FROM events WHERE public_token = ?");
     $stmt->execute([$token]);
     return $stmt->fetch() ?: null;
 }
@@ -125,6 +125,7 @@ function update_event(int $id, array $data): void {
         'deadline_1_date', 'deadline_1_count', 'deadline_1_name', 'deadline_1_enabled',
         'deadline_2_date', 'deadline_2_count', 'deadline_2_name',
         'session_duration_hours', 'weather_location', 'weather_lat', 'weather_lng',
+        'roles_enabled',
     ];
 
     foreach ($allowed as $field) {
@@ -550,4 +551,88 @@ function get_global_audit_log(int $limit = 200): array {
     $stmt = get_pdo()->prepare($sql);
     $stmt->execute([$limit]);
     return $stmt->fetchAll();
+}
+
+// ── Rollen ─────────────────────────────────────────────────
+
+function get_roles(int $eventId): array {
+    $stmt = get_pdo()->prepare("SELECT * FROM roles WHERE event_id = ? ORDER BY sort_order ASC, name ASC");
+    $stmt->execute([$eventId]);
+    return $stmt->fetchAll();
+}
+
+function create_role(int $eventId, string $name, int $sortOrder = 0): int {
+    $stmt = get_pdo()->prepare("INSERT INTO roles (event_id, name, sort_order) VALUES (?, ?, ?)");
+    $stmt->execute([$eventId, $name, $sortOrder]);
+    return (int)get_pdo()->lastInsertId();
+}
+
+function delete_role(int $roleId): void {
+    get_pdo()->prepare("DELETE FROM roles WHERE id = ?")->execute([$roleId]);
+}
+
+function get_member_roles(int $memberId): array {
+    $stmt = get_pdo()->prepare("SELECT r.* FROM roles r JOIN member_roles mr ON r.id = mr.role_id WHERE mr.member_id = ? ORDER BY r.sort_order ASC");
+    $stmt->execute([$memberId]);
+    return $stmt->fetchAll();
+}
+
+function get_member_role_ids(int $memberId): array {
+    $stmt = get_pdo()->prepare("SELECT role_id FROM member_roles WHERE member_id = ?");
+    $stmt->execute([$memberId]);
+    return $stmt->fetchAll(PDO::FETCH_COLUMN);
+}
+
+function set_member_roles(int $memberId, array $roleIds): void {
+    get_pdo()->prepare("DELETE FROM member_roles WHERE member_id = ?")->execute([$memberId]);
+    if (!empty($roleIds)) {
+        $stmt = get_pdo()->prepare("INSERT IGNORE INTO member_roles (member_id, role_id) VALUES (?, ?)");
+        foreach ($roleIds as $rid) {
+            $stmt->execute([$memberId, (int)$rid]);
+        }
+    }
+}
+
+/**
+ * Berechnet Rollen-Verfügbarkeit für einen Termin.
+ * Gibt Array zurück: [['name'=>'GF', 'total'=>2, 'available'=>1, 'ok'=>false], ...]
+ */
+function get_session_role_availability(int $sessionId, int $eventId): array {
+    $roles = get_roles($eventId);
+    if (empty($roles)) return [];
+
+    // Alle Mitglieder mit ihren Rollen laden
+    $members = get_members($eventId);
+    $attendance = get_attendance_for_session($sessionId);
+    $attLookup = [];
+    foreach ($attendance as $a) {
+        $attLookup[$a['member_id']] = $a['status'];
+    }
+
+    $result = [];
+    foreach ($roles as $role) {
+        // Mitglieder mit dieser Rolle
+        $stmt = get_pdo()->prepare("SELECT mr.member_id FROM member_roles mr JOIN members m ON mr.member_id = m.id WHERE mr.role_id = ? AND m.active = 1");
+        $stmt->execute([$role['id']]);
+        $memberIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $total = count($memberIds);
+        $available = 0;
+        foreach ($memberIds as $mid) {
+            $status = $attLookup[$mid] ?? null;
+            // Verfügbar = nicht entschuldigt und nicht absent (also present oder noch kein Status)
+            if ($status !== 'excused' && $status !== 'absent') {
+                $available++;
+            }
+        }
+
+        $result[] = [
+            'id' => $role['id'],
+            'name' => $role['name'],
+            'total' => $total,
+            'available' => $available,
+            'ok' => ($available > 0),
+        ];
+    }
+    return $result;
 }

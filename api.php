@@ -116,6 +116,12 @@ if ($adminToken) {
     }
 }
 
+// Archivierte Events: nur Reaktivierung und Export erlauben
+$isArchived = ($event['status'] === 'archived');
+if ($isArchived && !in_array($action, ['update_event', 'export_audit_csv'])) {
+    json_response(['success' => false, 'message' => 'Dieses Event ist archiviert. Änderungen sind nicht möglich.'], 403);
+}
+
 try {
     switch ($action) {
 
@@ -480,6 +486,48 @@ try {
             }
 
             json_response(['success' => true, 'results' => $results]);
+            break;
+
+        // ── Admin: Rolle hinzufügen ─────────────────────────
+        case 'add_role':
+            if (!$isAdmin) json_response(['success' => false, 'message' => 'Kein Zugriff.'], 403);
+            $name = trim($_POST['name'] ?? '');
+            $sortOrder = (int)($_POST['sort_order'] ?? 0);
+            if (empty($name)) json_response(['success' => false, 'message' => 'Rollenname darf nicht leer sein.'], 400);
+            create_role($event['id'], $name, $sortOrder);
+            audit_log($event['id'], null, 'role_add', 'Rolle "' . $name . '" hinzugefügt');
+            json_response(['success' => true, 'message' => 'Rolle "' . $name . '" hinzugefügt.']);
+            break;
+
+        // ── Admin: Rolle löschen ────────────────────────────
+        case 'delete_role':
+            if (!$isAdmin) json_response(['success' => false, 'message' => 'Kein Zugriff.'], 403);
+            $roleId = (int)($_POST['role_id'] ?? 0);
+            if (!$roleId) json_response(['success' => false, 'message' => 'Ungültige Rolle.'], 400);
+            delete_role($roleId);
+            audit_log($event['id'], null, 'role_delete', 'Rolle gelöscht');
+            json_response(['success' => true, 'message' => 'Rolle gelöscht.']);
+            break;
+
+        // ── Admin: Rollen eines Teilnehmers setzen ──────────
+        case 'set_member_roles':
+            if (!$isAdmin) json_response(['success' => false, 'message' => 'Kein Zugriff.'], 403);
+            $memberId = (int)($_POST['member_id'] ?? 0);
+            $roleIds = isset($_POST['role_ids']) ? array_map('intval', (array)$_POST['role_ids']) : [];
+            if (!$memberId) json_response(['success' => false, 'message' => 'Ungültiger Teilnehmer.'], 400);
+            set_member_roles($memberId, $roleIds);
+            $member = get_member($memberId);
+            audit_log($event['id'], $memberId, 'role_assign', 'Rollen aktualisiert für ' . ($member['name'] ?? ''));
+            json_response(['success' => true, 'message' => 'Rollen aktualisiert.']);
+            break;
+
+        // ── Admin: Rollen aktivieren/deaktivieren ───────────
+        case 'toggle_roles':
+            if (!$isAdmin) json_response(['success' => false, 'message' => 'Kein Zugriff.'], 403);
+            $enabled = ($_POST['enabled'] ?? '0') === '1' ? 1 : 0;
+            update_event($event['id'], ['roles_enabled' => $enabled]);
+            audit_log($event['id'], null, 'event_update', 'Rollen ' . ($enabled ? 'aktiviert' : 'deaktiviert'));
+            json_response(['success' => true, 'message' => 'Rollen ' . ($enabled ? 'aktiviert' : 'deaktiviert') . '.']);
             break;
 
         // ── Admin: Audit-Log CSV Export ─────────────────────

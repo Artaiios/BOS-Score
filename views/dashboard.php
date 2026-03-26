@@ -10,6 +10,7 @@ $totalPenalty = get_event_penalty_total($event['id']);
 $sessionDuration = (int)($event['session_duration_hours'] ?? 3);
 $d1Enabled = (bool)($event['deadline_1_enabled'] ?? true);
 $dashOrgName = get_organization_name($event);
+$dashRolesEnabled = (bool)($event['roles_enabled'] ?? false);
 
 $now = new DateTime();
 $deadline1 = new DateTime($event['deadline_1_date']);
@@ -145,6 +146,12 @@ if ($myMemberId > 0) {
 
 require __DIR__ . '/partials/header.php';
 ?>
+
+<?php if ($isArchived): ?>
+<div class="bg-yellow-50 border border-yellow-300 rounded-xl p-4 mb-6">
+    <p class="text-yellow-800 text-sm font-semibold">📦 Dieses Event ist archiviert und wird nur noch im Lesemodus angezeigt.</p>
+</div>
+<?php endif; ?>
 
 <!-- Kopfbereich -->
 <div class="mb-6">
@@ -439,6 +446,22 @@ require __DIR__ . '/partials/header.php';
                     <td class="px-4 py-3 text-center"><?= $att['excused'] ?: '-' ?></td>
                     <td class="px-4 py-3 text-center"><?= $att['absent'] ?: '-' ?></td>
                 </tr>
+                <?php if ($dashRolesEnabled):
+                    $roleAvail = get_session_role_availability($s['id'], $event['id']);
+                    if (!empty($roleAvail)):
+                ?>
+                <tr style="<?= $trStyle ?>border-bottom: 1px solid #e5e7eb;">
+                    <td colspan="7" class="px-4 py-1.5">
+                        <div class="flex flex-wrap gap-1">
+                            <?php foreach ($roleAvail as $ra): ?>
+                            <span class="text-xs px-1.5 py-0.5 rounded <?= $ra['ok'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 font-bold' ?>">
+                                <?= e($ra['name']) ?> <?= $ra['available'] ?>/<?= $ra['total'] ?> <?= $ra['ok'] ? '✅' : '❌' ?>
+                            </span>
+                            <?php endforeach; ?>
+                        </div>
+                    </td>
+                </tr>
+                <?php endif; endif; ?>
                 <?php endforeach; ?>
             </tbody>
         </table>
@@ -478,6 +501,12 @@ require __DIR__ . '/partials/header.php';
                            class="text-red-600 hover:text-red-800 font-medium hover:underline">
                             <?= e($m['name']) ?>
                         </a>
+                        <?php if ($dashRolesEnabled):
+                            $mRoles = get_member_roles($m['id']);
+                            if (!empty($mRoles)):
+                        ?>
+                        <span class="ml-1 text-xs text-gray-400"><?= implode(', ', array_map(fn($r) => e($r['name']), $mRoles)) ?></span>
+                        <?php endif; endif; ?>
                     </td>
                     <td class="px-4 py-3 text-center font-semibold" data-sort="<?= $m['present'] ?>"><?= $m['present'] ?></td>
                     <td class="px-4 py-3 text-center hidden sm:table-cell" data-sort="<?= $m['quote'] ?>"><?= $m['quote'] ?>%</td>

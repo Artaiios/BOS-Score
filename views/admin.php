@@ -14,10 +14,21 @@ $penaltyByMember = get_penalty_stats_by_member($event['id']);
 
 $adminToken = $event['admin_token'];
 $tab = $_GET['tab'] ?? 'overview';
+$isArchived = ($event['status'] === 'archived');
 
 $pageTitle = 'Admin – ' . $event['name'];
 require __DIR__ . '/partials/header.php';
 ?>
+
+<?php if ($isArchived): ?>
+<div class="bg-yellow-50 border border-yellow-300 rounded-xl p-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <p class="text-yellow-800 text-sm font-semibold">📦 Dieses Event ist archiviert. Alle Funktionen sind deaktiviert.</p>
+    <button type="button" onclick="reactivateEvent()"
+            class="bg-green-600 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-green-700 transition shrink-0">
+        🔄 Event reaktivieren
+    </button>
+</div>
+<?php endif; ?>
 
 <!-- Admin-Tabs -->
 <div class="mb-6 flex flex-wrap gap-2 border-b pb-3">
@@ -31,6 +42,7 @@ require __DIR__ . '/partials/header.php';
         'penalties' => '💰 Strafen',
         'penalty_stats' => '📊 Strafkasse',
         'audit' => '📝 Audit-Log',
+        'roles' => '🏷️ Rollen',
         'settings' => '⚙️ Einstellungen',
     ];
     foreach ($tabs as $key => $label):
@@ -248,6 +260,8 @@ elseif ($tab === 'sessions'):
 // ══════════════════════════════════════════════════════════════
 elseif ($tab === 'attendance'):
     $sessionDuration = (int)($event['session_duration_hours'] ?? 3);
+    $attRolesEnabled = (bool)($event['roles_enabled'] ?? false);
+    $attRoles = $attRolesEnabled ? get_roles($event['id']) : [];
 
     // Alle Anwesenheitsdaten vorladen
     $allAttData = [];
@@ -334,6 +348,17 @@ elseif ($tab === 'attendance'):
                     <span class="text-gray-400">Noch nicht erfasst</span>
                 <?php endif; ?>
             </div>
+            <?php if ($attRolesEnabled && !empty($attRoles)):
+                $roleAvail = get_session_role_availability($s['id'], $event['id']);
+            ?>
+            <div class="flex flex-wrap gap-1 mt-1">
+                <?php foreach ($roleAvail as $ra): ?>
+                <span class="text-xs px-1.5 py-0.5 rounded <?= $ra['ok'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700 font-bold' ?>">
+                    <?= e($ra['name']) ?> <?= $ra['available'] ?>/<?= $ra['total'] ?> <?= $ra['ok'] ? '✅' : '❌' ?>
+                </span>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -699,7 +724,7 @@ elseif ($tab === 'audit'):
         <div class="flex gap-2 flex-wrap">
             <select onchange="filterAudit('filter_action', this.value)" class="border rounded-lg p-1.5 text-xs">
                 <option value="">Alle Aktionen</option>
-                <?php foreach (['excuse','withdraw_excuse','attendance','member_add','member_update','member_bulk','session_add','session_delete','penalty_add','penalty_delete','penalty_type_add','event_update','setup'] as $at): ?>
+                <?php foreach (['excuse','withdraw_excuse','attendance','member_add','member_update','member_bulk','session_add','session_delete','penalty_add','penalty_delete','penalty_type_add','role_add','role_delete','role_assign','event_update','event_create','setup'] as $at): ?>
                 <option value="<?= $at ?>" <?= $filterAction === $at ? 'selected' : '' ?>><?= $at ?></option>
                 <?php endforeach; ?>
             </select>
@@ -856,9 +881,104 @@ elseif ($tab === 'settings'):
     </div>
 </div>
 
-<?php endif; ?>
+<?php
+// ══════════════════════════════════════════════════════════════
+// Tab: Rollen
+// ══════════════════════════════════════════════════════════════
+elseif ($tab === 'roles'):
+    $rolesEnabled = (bool)($event['roles_enabled'] ?? false);
+    $roles = get_roles($event['id']);
+?>
 
-<!-- ═══ Admin JavaScript ═══════════════════════════════════════ -->
+<!-- Rollen aktivieren -->
+<div class="bg-white rounded-xl shadow-sm border p-5 mb-6">
+    <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" id="rolesToggle" <?= $rolesEnabled ? 'checked' : '' ?> class="rounded w-5 h-5"
+               onchange="try{toggleRoles(this.checked);}catch(e){alert(e.message);}">
+        <div>
+            <span class="font-bold text-gray-800">Rollen aktivieren</span>
+            <p class="text-xs text-gray-400">Wenn aktiviert, können Teilnehmern Rollen zugewiesen werden. Die Rollenverfügbarkeit wird im Dashboard und in der Anwesenheitsliste angezeigt.</p>
+        </div>
+    </label>
+</div>
+
+<div id="rolesContent" class="<?= $rolesEnabled ? '' : 'hidden' ?>">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Rollenkatalog -->
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-5 py-4 border-b" style="background-color: #e5e7eb;">
+                <h3 class="font-bold text-gray-700">🏷️ Rollenkatalog</h3>
+            </div>
+
+            <?php if (empty($roles)): ?>
+                <div class="p-5 text-center text-gray-400 text-sm">Noch keine Rollen definiert.</div>
+            <?php else: ?>
+                <div class="divide-y">
+                    <?php foreach ($roles as $role):
+                        $memberCount = count(get_pdo()->query("SELECT mr.member_id FROM member_roles mr JOIN members m ON mr.member_id = m.id WHERE mr.role_id = {$role['id']} AND m.active = 1")->fetchAll());
+                    ?>
+                    <div class="px-5 py-3 flex items-center justify-between">
+                        <div>
+                            <span class="font-medium text-gray-800"><?= e($role['name']) ?></span>
+                            <span class="text-xs text-gray-400 ml-2"><?= $memberCount ?> Teilnehmer</span>
+                        </div>
+                        <button type="button" onclick="try{deleteRole(<?= $role['id'] ?>, '<?= e(addslashes($role['name'])) ?>');}catch(e){alert(e.message);}"
+                                class="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50 transition">🗑️</button>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <div class="px-5 py-4 border-t bg-gray-50">
+                <div class="flex gap-2">
+                    <input type="text" id="newRoleName" placeholder="Rollenname (z.B. Gruppenführer)"
+                           class="flex-1 border rounded-lg p-2 text-sm">
+                    <input type="number" id="newRoleSort" placeholder="Sort" value="<?= (count($roles) + 1) * 10 ?>"
+                           class="w-16 border rounded-lg p-2 text-sm text-center">
+                    <button type="button" onclick="try{addRole();}catch(e){alert(e.message);}"
+                            class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition">+</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rollen zuweisen -->
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+            <div class="px-5 py-4 border-b" style="background-color: #e5e7eb;">
+                <h3 class="font-bold text-gray-700">👥 Rollen zuweisen</h3>
+            </div>
+
+            <?php if (empty($roles)): ?>
+                <div class="p-5 text-center text-gray-400 text-sm">Erstelle zuerst Rollen im Katalog.</div>
+            <?php else: ?>
+                <div class="divide-y max-h-96 overflow-y-auto">
+                    <?php foreach ($activeMembers as $m):
+                        $mRoleIds = get_member_role_ids($m['id']);
+                    ?>
+                    <div class="px-5 py-3">
+                        <div class="font-medium text-gray-800 text-sm mb-2"><?= e($m['name']) ?></div>
+                        <div class="flex flex-wrap gap-1">
+                            <?php foreach ($roles as $role):
+                                $hasRole = in_array($role['id'], $mRoleIds);
+                            ?>
+                            <button type="button"
+                                    onclick="try{toggleMemberRole(<?= $m['id'] ?>, <?= $role['id'] ?>, this);}catch(e){alert(e.message);}"
+                                    class="px-2 py-1 rounded text-xs font-medium border transition
+                                    <?= $hasRole ? 'bg-gray-700 text-white border-gray-700' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50' ?>"
+                                    data-active="<?= $hasRole ? '1' : '0' ?>">
+                                <?= e($role['name']) ?>
+                            </button>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<?php endif; ?>
 <script>
 const ADMIN_TOKEN = '<?= e($adminToken) ?>';
 
@@ -1126,6 +1246,68 @@ function selectWeatherLocation(name, lat, lng) {
     showToast('Standort "' + name + '" ausgewählt. Bitte "Speichern" klicken.', 'info');
 }
 
+// ── Rollen ──────────────────────────────────────────────────
+async function toggleRoles(enabled) {
+    var r = await adminApi('toggle_roles', { enabled: enabled ? '1' : '0' });
+    if (r.success) {
+        var content = document.getElementById('rolesContent');
+        if (content) content.classList.toggle('hidden', !enabled);
+    }
+}
+
+async function addRole() {
+    var name = document.getElementById('newRoleName').value.trim();
+    var sort = document.getElementById('newRoleSort').value;
+    if (!name) { showToast('Bitte Rollenname eingeben.', 'warning'); return; }
+    var r = await adminApi('add_role', { name: name, sort_order: sort });
+    if (r.success) setTimeout(function() { location.reload(); }, 800);
+}
+
+async function deleteRole(id, name) {
+    if (!confirm('Rolle "' + name + '" löschen? Alle Zuweisungen werden entfernt.')) return;
+    var r = await adminApi('delete_role', { role_id: id });
+    if (r.success) setTimeout(function() { location.reload(); }, 800);
+}
+
+async function toggleMemberRole(memberId, roleId, btn) {
+    var isActive = btn.getAttribute('data-active') === '1';
+    // Alle aktuellen Rollen des Mitglieds sammeln
+    var container = btn.parentElement;
+    var buttons = container.querySelectorAll('button[data-active]');
+    var roleIds = [];
+    for (var i = 0; i < buttons.length; i++) {
+        var b = buttons[i];
+        var bRoleId = parseInt(b.getAttribute('onclick').match(/toggleMemberRole\(\d+,\s*(\d+)/)[1]);
+        var bActive = b.getAttribute('data-active') === '1';
+        if (bRoleId === roleId) {
+            // Toggle this one
+            if (!isActive) roleIds.push(bRoleId);
+        } else if (bActive) {
+            roleIds.push(bRoleId);
+        }
+    }
+
+    var formData = { member_id: memberId };
+    for (var j = 0; j < roleIds.length; j++) {
+        formData['role_ids[' + j + ']'] = roleIds[j];
+    }
+    if (roleIds.length === 0) {
+        formData['role_ids'] = '';
+    }
+
+    var r = await adminApi('set_member_roles', formData);
+    if (r.success) {
+        // UI toggle
+        if (isActive) {
+            btn.setAttribute('data-active', '0');
+            btn.className = 'px-2 py-1 rounded text-xs font-medium border transition bg-white text-gray-500 border-gray-200 hover:bg-gray-50';
+        } else {
+            btn.setAttribute('data-active', '1');
+            btn.className = 'px-2 py-1 rounded text-xs font-medium border transition bg-gray-700 text-white border-gray-700';
+        }
+    }
+}
+
 // ── Audit-Filter ────────────────────────────────────────────
 function filterAudit(param, value) {
     const url = new URL(location.href);
@@ -1133,6 +1315,39 @@ function filterAudit(param, value) {
     else url.searchParams.delete(param);
     location.href = url.toString();
 }
+
+// ── Archiviertes Event reaktivieren ─────────────────────────
+async function reactivateEvent() {
+    if (!confirm('Event wieder aktivieren? Alle Funktionen werden wieder freigeschaltet.')) return;
+    await adminApi('update_event', { name: '<?= e(addslashes($event['name'])) ?>', status: 'active' });
+    setTimeout(function() { location.reload(); }, 800);
+}
+
+<?php if ($isArchived): ?>
+// ── Read-Only-Modus für archivierte Events ──────────────────
+(function() {
+    // Alle onclick-Buttons deaktivieren (außer Tabs, Reaktivierung, Audit-Filter)
+    var buttons = document.querySelectorAll('button[onclick], button[type="button"]');
+    for (var i = 0; i < buttons.length; i++) {
+        var btn = buttons[i];
+        var oc = btn.getAttribute('onclick') || '';
+        // Reaktivierung und Audit-Filter erlauben
+        if (oc.indexOf('reactivateEvent') !== -1) continue;
+        if (oc.indexOf('filterAudit') !== -1) continue;
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+        btn.style.cursor = 'not-allowed';
+        btn.onclick = null;
+        btn.setAttribute('onclick', '');
+    }
+    // Alle Eingabefelder deaktivieren
+    var inputs = document.querySelectorAll('main input, main select, main textarea');
+    for (var j = 0; j < inputs.length; j++) {
+        inputs[j].disabled = true;
+        inputs[j].style.opacity = '0.6';
+    }
+})();
+<?php endif; ?>
 </script>
 
 <?php require __DIR__ . '/partials/footer.php'; ?>

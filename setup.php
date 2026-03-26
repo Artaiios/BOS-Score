@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->exec("USE `" . DB_NAME . "`");
 
             // Tabellen löschen (Reihenfolge wegen Foreign Keys)
-            foreach (['audit_log','penalties','penalty_types','attendance','sessions','members','events','server_config'] as $t) {
+            foreach (['audit_log','penalties','penalty_types','member_roles','roles','attendance','sessions','members','events','server_config'] as $t) {
                 $pdo->exec("DROP TABLE IF EXISTS $t");
             }
 
@@ -61,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 weather_location VARCHAR(255) DEFAULT '',
                 weather_lat DECIMAL(8,5) DEFAULT 0,
                 weather_lng DECIMAL(8,5) DEFAULT 0,
+                roles_enabled TINYINT(1) NOT NULL DEFAULT 0,
                 status ENUM('active','archived') NOT NULL DEFAULT 'active',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
@@ -127,6 +128,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
                 FOREIGN KEY (penalty_type_id) REFERENCES penalty_types(id) ON DELETE CASCADE,
                 INDEX idx_member_active (member_id, deleted_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+            // roles
+            $pdo->exec("CREATE TABLE roles (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                event_id INT NOT NULL,
+                name VARCHAR(100) NOT NULL,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+                INDEX idx_event_sort (event_id, sort_order)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+            // member_roles
+            $pdo->exec("CREATE TABLE member_roles (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                member_id INT NOT NULL,
+                role_id INT NOT NULL,
+                FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+                FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+                UNIQUE KEY uk_member_role (member_id, role_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
             // audit_log

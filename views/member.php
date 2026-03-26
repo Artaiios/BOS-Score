@@ -40,6 +40,12 @@ $pageTitle = $member['name'] . ' – ' . $event['name'];
 require __DIR__ . '/partials/header.php';
 ?>
 
+<?php if ($isArchived): ?>
+<div class="bg-yellow-50 border border-yellow-300 rounded-xl p-4 mb-6">
+    <p class="text-yellow-800 text-sm font-semibold">📦 Dieses Event ist archiviert und wird nur noch im Lesemodus angezeigt.</p>
+</div>
+<?php endif; ?>
+
 <!-- Breadcrumb -->
 <nav class="mb-6 text-sm">
     <a href="index.php?event=<?= e($event['public_token']) ?>" class="text-red-600 hover:underline">← Zurück zur Übersicht</a>
@@ -51,6 +57,18 @@ require __DIR__ . '/partials/header.php';
     <?php if ($member['role']): ?>
         <p class="text-gray-500 mt-1"><?= e($member['role']) ?></p>
     <?php endif; ?>
+    <?php
+    $memberRolesEnabled = (bool)($event['roles_enabled'] ?? false);
+    if ($memberRolesEnabled):
+        $myRoles = get_member_roles($member['id']);
+        if (!empty($myRoles)):
+    ?>
+    <div class="flex flex-wrap gap-1 mt-2">
+        <?php foreach ($myRoles as $mr): ?>
+        <span class="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-medium"><?= e($mr['name']) ?></span>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; endif; ?>
 </div>
 
 <!-- Fortschrittsbalken -->
@@ -151,7 +169,7 @@ require __DIR__ . '/partials/header.php';
         $statusInfo = $status ? ($statusConfig[$status] ?? null) : null;
 
         // Kann der Teilnehmer seinen Entschuldigungsstatus ändern?
-        $canChange = can_member_change_excuse($s, $att);
+        $canChange = !$isArchived && can_member_change_excuse($s, $att);
         $isSelfExcused = ($status === 'excused' && $att && $att['excused_by'] === 'member');
 
         // Zeilen-Styling

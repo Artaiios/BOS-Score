@@ -69,21 +69,21 @@ Alle relevanten Änderungen am LAZ Übungs-Tracker werden in dieser Datei dokume
 - Admin-gesetzte Status nicht vom Teilnehmer überschreibbar
 - „Nächster Termin" wechselt erst nach Ablauf der Übungsdauer
 
-## [1.5.0] – 2026-03-24
+## [1.5.0] – 2026-03-25
 
 ### Hinzugefügt
 - Frist-Countdown-Karten für beide Fristen
 - Wetter-Vorhersage für nächsten Termin (Open-Meteo API)
 - „Mein Status"-Widget (Cookie-basiert)
 
-## [1.4.0] – 2026-03-23
+## [1.4.0] – 2026-03-25
 
 ### Geändert
 - Upgrade von Tailwind CSS 2.x auf 3.x (CDN)
 - Farbcodierte Anwesenheits-Buttons (Grün/Gelb/Rot)
 - Nächster-Termin-Hervorhebung
 
-## [1.3.0] – 2026-03-23
+## [1.3.0] – 2026-03-25
 
 ### Behoben
 - SQL-Bug in Strafkasse-Statistik (LEFT JOIN Summierung)
@@ -92,17 +92,17 @@ Alle relevanten Änderungen am LAZ Übungs-Tracker werden in dieser Datei dokume
 - Kreisdiagramm zeigt Anzahl statt Euro
 - Vergangene Termine ausgegraut
 
-## [1.2.0] – 2026-03-22
+## [1.2.0] – 2026-03-25
 
 ### Hinzugefügt
 - Strafenkatalog Inline-Edit
 
-## [1.1.0] – 2026-03-22
+## [1.1.0] – 2026-03-25
 
 ### Hinzugefügt
 - Konfigurierbare Frist-Namen (`deadline_1_name`, `deadline_2_name`)
 
-## [1.0.0] – 2026-03-21
+## [1.0.0] – 2026-03-25
 
 ### Hinzugefügt
 - Vollständige LAZ-Übungsverwaltung mit Dashboard, Teilnehmer-Detail und Admin-Bereich

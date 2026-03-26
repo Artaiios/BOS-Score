@@ -28,10 +28,12 @@ if (empty($eventToken)) {
 $event = get_event_by_public_token($eventToken);
 if (!$event) {
     http_response_code(404);
-    $errorMessage = 'Event nicht gefunden oder nicht mehr aktiv.';
+    $errorMessage = 'Event nicht gefunden.';
     require __DIR__ . '/views/partials/error.php';
     exit;
 }
+
+$isArchived = ($event['status'] === 'archived');
 
 // Admin-Modus prüfen
 $isAdmin = false;
