@@ -2,7 +2,7 @@
 
 Webanwendung zur Verwaltung von Leistungsabzeichen-Übungen (LAZ) für Freiwillige Feuerwehren.
 
-![PHP](https://img.shields.io/badge/PHP-8.0+-blue) ![MySQL](https://img.shields.io/badge/MySQL-5.7+-orange) ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.x-38bdf8) ![License](https://img.shields.io/badge/License-MIT-green)
+![PHP](https://img.shields.io/badge/PHP-8.0+-blue) ![MySQL](https://img.shields.io/badge/MySQL-5.7+-orange) ![MariaDB](https://img.shields.io/badge/MariaDB-10.5+-orange) ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-3.x-38bdf8) ![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 ### Live-Demo Dashboard
