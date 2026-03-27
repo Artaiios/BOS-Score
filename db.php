@@ -1,6 +1,6 @@
 <?php
 /**
- * LAZ Übungs-Tracker – Datenbankverbindung & Hilfsfunktionen
+ * BOS-Score – Datenbankverbindung & Hilfsfunktionen
  */
 
 require_once __DIR__ . '/config.php';
@@ -10,9 +10,9 @@ function get_pdo(): PDO {
     if ($pdo === null) {
         $dsn = 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET;
         $options = [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_EMULATE_PREPARES   => false,
         ];
         $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
         $pdo->exec("SET NAMES utf8mb4");
@@ -39,12 +39,6 @@ function set_server_config(string $key, string $value): void {
     $stmt->execute([$key, $value, $value]);
 }
 
-function verify_server_admin_token(string $token): bool {
-    if (empty($token)) return false;
-    $stored = get_server_config('server_admin_token');
-    return !empty($stored) && hash_equals($stored, $token);
-}
-
 /**
  * Gibt den Organisationsnamen zurück.
  * Pro Event überschreibbar, sonst globaler Standard.
@@ -53,7 +47,7 @@ function get_organization_name(?array $event = null): string {
     if ($event && !empty($event['organization_name'])) {
         return $event['organization_name'];
     }
-    return get_server_config('organization_name', 'LAZ Übungs-Tracker');
+    return get_server_config('organization_name', APP_NAME);
 }
 
 // ── Event-Funktionen ────────────────────────────────────────
@@ -61,12 +55,6 @@ function get_organization_name(?array $event = null): string {
 function get_event_by_public_token(string $token): ?array {
     $stmt = get_pdo()->prepare("SELECT * FROM events WHERE public_token = ?");
     $stmt->execute([$token]);
-    return $stmt->fetch() ?: null;
-}
-
-function get_event_by_admin_token(string $eventToken, string $adminToken): ?array {
-    $stmt = get_pdo()->prepare("SELECT * FROM events WHERE public_token = ? AND admin_token = ?");
-    $stmt->execute([$eventToken, $adminToken]);
     return $stmt->fetch() ?: null;
 }
 
@@ -86,23 +74,22 @@ function get_event_by_id(int $id): ?array {
 
 function create_event(string $name, string $d2_date, int $d2_count, string $d1_date = '', int $d1_count = 0, bool $d1_enabled = false, string $orgName = ''): array {
     $publicToken = generate_token(16);
-    $adminToken = generate_token(24);
-    $stmt = get_pdo()->prepare("INSERT INTO events (name, organization_name, public_token, admin_token, deadline_1_date, deadline_1_count, deadline_1_enabled, deadline_2_date, deadline_2_count, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW())");
+
+    $stmt = get_pdo()->prepare("INSERT INTO events (name, organization_name, public_token, deadline_1_date, deadline_1_count, deadline_1_enabled, deadline_2_date, deadline_2_count, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW())");
     $stmt->execute([
         $name,
         $orgName ?: null,
         $publicToken,
-        $adminToken,
-        $d1_date ?: $d2_date, // Fallback auf Frist 2 wenn keine Frist 1
+        $d1_date ?: $d2_date,
         $d1_count ?: $d2_count,
         $d1_enabled ? 1 : 0,
         $d2_date,
         $d2_count,
     ]);
+
     return [
-        'id' => (int)get_pdo()->lastInsertId(),
+        'id'           => (int)get_pdo()->lastInsertId(),
         'public_token' => $publicToken,
-        'admin_token' => $adminToken,
     ];
 }
 
@@ -119,13 +106,13 @@ function copy_penalty_types(int $fromEventId, int $toEventId): int {
 function update_event(int $id, array $data): void {
     $fields = [];
     $params = [];
-
     $allowed = [
         'name', 'status', 'organization_name',
         'deadline_1_date', 'deadline_1_count', 'deadline_1_name', 'deadline_1_enabled',
         'deadline_2_date', 'deadline_2_count', 'deadline_2_name',
         'session_duration_hours', 'weather_location', 'weather_lat', 'weather_lng',
-        'roles_enabled',
+        'roles_enabled', 'auto_confirm_registration',
+        'theme_primary', 'theme_logo_path',
     ];
 
     foreach ($allowed as $field) {
@@ -144,23 +131,16 @@ function update_event(int $id, array $data): void {
 }
 
 function delete_event(int $id): void {
-    // Cascade löscht alle verknüpften Daten
     get_pdo()->prepare("DELETE FROM events WHERE id = ?")->execute([$id]);
 }
 
 // ── Session-Zeitlogik ───────────────────────────────────────
 
-/**
- * Prüft ob der Termin-Startzeitpunkt in der Zukunft liegt.
- */
 function is_session_in_future(array $session): bool {
     $start = new DateTime($session['session_date'] . ' ' . $session['session_time']);
     return $start > new DateTime();
 }
 
-/**
- * Prüft ob die Übung als beendet gilt (Startzeit + Dauer überschritten).
- */
 function is_session_ended(array $session, int $durationHours = 3): bool {
     $start = new DateTime($session['session_date'] . ' ' . $session['session_time']);
     $end = clone $start;
@@ -168,9 +148,6 @@ function is_session_ended(array $session, int $durationHours = 3): bool {
     return new DateTime() >= $end;
 }
 
-/**
- * Ermittelt den nächsten Termin (noch nicht beendeter Termin).
- */
 function get_next_session(array $sessions, int $durationHours = 3): ?array {
     foreach ($sessions as $s) {
         if (!is_session_ended($s, $durationHours)) {
@@ -180,10 +157,6 @@ function get_next_session(array $sessions, int $durationHours = 3): ?array {
     return null;
 }
 
-/**
- * Prüft ob ein Mitglied seinen Entschuldigungsstatus selbst ändern darf.
- * Erlaubt wenn: Termin noch nicht gestartet UND Admin hat nicht bereits present/absent gesetzt.
- */
 function can_member_change_excuse(array $session, ?array $attendance): bool {
     if (!is_session_in_future($session)) return false;
     if ($attendance && in_array($attendance['status'], ['present', 'absent']) && $attendance['excused_by'] === 'admin') {
@@ -209,9 +182,9 @@ function get_member(int $id): ?array {
     return $stmt->fetch() ?: null;
 }
 
-function create_member(int $eventId, string $name, string $role = ''): int {
-    $stmt = get_pdo()->prepare("INSERT INTO members (event_id, name, role, active, created_at) VALUES (?, ?, ?, 1, NOW())");
-    $stmt->execute([$eventId, trim($name), trim($role)]);
+function create_member(int $eventId, string $name, string $email = '', string $role = ''): int {
+    $stmt = get_pdo()->prepare("INSERT INTO members (event_id, name, email, role, active, created_at) VALUES (?, ?, ?, ?, 1, NOW())");
+    $stmt->execute([$eventId, trim($name), strtolower(trim($email)), trim($role)]);
     return (int)get_pdo()->lastInsertId();
 }
 
@@ -234,18 +207,18 @@ function get_session(int $id): ?array {
     return $stmt->fetch() ?: null;
 }
 
-function create_session(int $eventId, string $date, string $time, string $comment = ''): int {
+function create_session_entry(int $eventId, string $date, string $time, string $comment = ''): int {
     $stmt = get_pdo()->prepare("INSERT INTO sessions (event_id, session_date, session_time, comment, created_at) VALUES (?, ?, ?, ?, NOW())");
     $stmt->execute([$eventId, $date, $time, trim($comment)]);
     return (int)get_pdo()->lastInsertId();
 }
 
-function update_session(int $id, string $date, string $time, string $comment): void {
+function update_session_entry(int $id, string $date, string $time, string $comment): void {
     $stmt = get_pdo()->prepare("UPDATE sessions SET session_date=?, session_time=?, comment=? WHERE id=?");
     $stmt->execute([$date, $time, trim($comment), $id]);
 }
 
-function delete_session(int $id): void {
+function delete_session_entry(int $id): void {
     get_pdo()->prepare("DELETE FROM attendance WHERE session_id = ?")->execute([$id]);
     get_pdo()->prepare("DELETE FROM sessions WHERE id = ?")->execute([$id]);
 }
@@ -278,7 +251,6 @@ function set_attendance(int $sessionId, int $memberId, string $status, string $e
     $excusedAt = ($status === 'excused') ? date('Y-m-d H:i:s') : null;
 
     if ($row) {
-        // Preserve member's excused_at if already set by member and admin is also setting excused
         if ($status === 'excused' && $row['status'] === 'excused') {
             $stmt = get_pdo()->prepare("UPDATE attendance SET status=?, excused_by=?, updated_at=NOW() WHERE session_id=? AND member_id=?");
             $stmt->execute([$status, $excusedBy, $sessionId, $memberId]);
@@ -296,17 +268,14 @@ function member_excuse(int $sessionId, int $memberId): array {
     $session = get_session($sessionId);
     if (!$session) return ['success' => false, 'message' => 'Termin nicht gefunden.'];
 
-    // Prüfe ob der Termin-Startzeitpunkt in der Zukunft liegt
     if (!is_session_in_future($session)) {
         return ['success' => false, 'message' => 'Entschuldigung für begonnene oder vergangene Termine nicht möglich.'];
     }
 
-    // Prüfe bestehenden Status
     $stmt = get_pdo()->prepare("SELECT * FROM attendance WHERE session_id = ? AND member_id = ?");
     $stmt->execute([$sessionId, $memberId]);
     $row = $stmt->fetch();
 
-    // Admin hat bereits Anwesenheit/Abwesenheit festgestellt
     if ($row && in_array($row['status'], ['present', 'absent']) && $row['excused_by'] === 'admin') {
         return ['success' => false, 'message' => 'Der Admin hat deinen Status bereits festgelegt. Bitte wende dich an den Administrator.'];
     }
@@ -315,15 +284,14 @@ function member_excuse(int $sessionId, int $memberId): array {
         return ['success' => false, 'message' => 'Du bist bereits für diesen Termin entschuldigt.'];
     }
 
-    // Kurzfristig-Warnung prüfen (< 1 Stunde)
     $sessionDateTime = new DateTime($session['session_date'] . ' ' . $session['session_time']);
     $now = new DateTime();
     $diff = $now->diff($sessionDateTime);
     $totalMinutes = ($diff->days * 24 * 60) + ($diff->h * 60) + $diff->i;
     $shortNotice = ($totalMinutes < 60 && !$diff->invert);
 
-    // Entschuldigung eintragen
     $excusedAt = date('Y-m-d H:i:s');
+
     if ($row) {
         $stmt = get_pdo()->prepare("UPDATE attendance SET status='excused', excused_at=?, excused_by='member', updated_at=NOW() WHERE session_id=? AND member_id=?");
         $stmt->execute([$excusedAt, $sessionId, $memberId]);
@@ -333,10 +301,10 @@ function member_excuse(int $sessionId, int $memberId): array {
     }
 
     return [
-        'success' => true,
+        'success'      => true,
         'short_notice' => $shortNotice,
-        'excused_at' => $excusedAt,
-        'message' => $shortNotice
+        'excused_at'   => $excusedAt,
+        'message'      => $shortNotice
             ? '⚠️ Achtung: Deine Absage erfolgt kurzfristig (weniger als 1 Stunde vor Übungsbeginn). Gemäß Strafenkatalog können hierfür 2€ anfallen.'
             : 'Entschuldigung erfolgreich eingetragen.'
     ];
@@ -362,7 +330,6 @@ function member_withdraw_excuse(int $sessionId, int $memberId): array {
         return ['success' => false, 'message' => 'Vom Admin gesetzte Entschuldigungen können nur vom Admin geändert werden.'];
     }
 
-    // Entschuldigung zurückziehen (Eintrag löschen)
     $stmt = get_pdo()->prepare("DELETE FROM attendance WHERE session_id = ? AND member_id = ?");
     $stmt->execute([$sessionId, $memberId]);
 
@@ -385,17 +352,18 @@ function get_member_stats(int $eventId): array {
         $att = get_attendance_for_member($m['id']);
         $present = count(array_filter($att, fn($a) => $a['status'] === 'present'));
         $excused = count(array_filter($att, fn($a) => $a['status'] === 'excused'));
-        $absent = count(array_filter($att, fn($a) => $a['status'] === 'absent'));
+        $absent  = count(array_filter($att, fn($a) => $a['status'] === 'absent'));
         $quote = $totalPast > 0 ? round(($present / $totalPast) * 100, 1) : 0;
 
         $stats[] = array_merge($m, [
-            'present' => $present,
-            'excused' => $excused,
-            'absent' => $absent,
-            'quote' => $quote,
+            'present'    => $present,
+            'excused'    => $excused,
+            'absent'     => $absent,
+            'quote'      => $quote,
             'total_past' => $totalPast,
         ]);
     }
+
     return $stats;
 }
 
@@ -408,13 +376,11 @@ function calculate_deadline_status(int $present, int $required, string $deadline
     }
 
     if ($deadline < $now) {
-        // Frist abgelaufen
         return ['status' => 'failed', 'icon' => '❌', 'class' => 'text-red-600 bg-red-50'];
     }
 
     $needed = $required - $present;
     if ($needed <= $totalRemaining) {
-        // Prüfe ob noch realistisch (80% der verbleibenden Termine nötig = gelb)
         $ratio = $totalRemaining > 0 ? $needed / $totalRemaining : 1;
         if ($ratio > 0.9) {
             return ['status' => 'critical', 'icon' => '⚠️', 'class' => 'text-yellow-600 bg-yellow-50'];
@@ -425,7 +391,7 @@ function calculate_deadline_status(int $present, int $required, string $deadline
     return ['status' => 'impossible', 'icon' => '❌', 'class' => 'text-red-600 bg-red-50'];
 }
 
-// ── Strafen-Funktionen ──────────────────────────────────────
+// ── Strafen-Funktionen (Team-Kasse) ────────────────────────
 
 function get_penalty_types(int $eventId, bool $activeOnly = false): array {
     $sql = "SELECT * FROM penalty_types WHERE event_id = ?";
@@ -486,25 +452,26 @@ function delete_penalty(int $id): void {
     $stmt->execute([$id]);
 }
 
-// ── Audit-Log ───────────────────────────────────────────────
+// ── Audit-Log (DSGVO-konform: IP als Hash) ──────────────────
 
-function audit_log(int $eventId, ?int $memberId, string $actionType, string $description): void {
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-    $stmt = get_pdo()->prepare("INSERT INTO audit_log (event_id, member_id, action_type, action_description, ip_address, created_at) VALUES (?, ?, ?, ?, ?, NOW())");
-    $stmt->execute([$eventId, $memberId, $actionType, $description, $ip]);
+function audit_log(?int $eventId, ?int $userAccountId, string $actionType, string $description): void {
+    $ipHash = hash_value($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+    $stmt = get_pdo()->prepare("INSERT INTO audit_log (event_id, user_account_id, action_type, action_description, ip_hash, created_at) VALUES (?, ?, ?, ?, ?, NOW())");
+    $stmt->execute([$eventId, $userAccountId, $actionType, $description, $ipHash]);
 }
 
-function get_audit_log(int $eventId, ?string $actionType = null, ?int $memberId = null, int $limit = 100): array {
-    $sql = "SELECT al.*, m.name as member_name FROM audit_log al LEFT JOIN members m ON al.member_id = m.id WHERE al.event_id = ?";
+function get_audit_log(int $eventId, ?string $actionType = null, ?int $userAccountId = null, int $limit = 100): array {
+    $sql = "SELECT al.*, ua.display_name as user_name FROM audit_log al LEFT JOIN user_accounts ua ON al.user_account_id = ua.id WHERE al.event_id = ?";
     $params = [$eventId];
 
     if ($actionType) {
         $sql .= " AND al.action_type = ?";
         $params[] = $actionType;
     }
-    if ($memberId) {
-        $sql .= " AND al.member_id = ?";
-        $params[] = $memberId;
+
+    if ($userAccountId) {
+        $sql .= " AND al.user_account_id = ?";
+        $params[] = $userAccountId;
     }
 
     $sql .= " ORDER BY al.created_at DESC LIMIT ?";
@@ -515,7 +482,7 @@ function get_audit_log(int $eventId, ?string $actionType = null, ?int $memberId 
     return $stmt->fetchAll();
 }
 
-// ── Penalty-Statistiken ─────────────────────────────────────
+// ── Penalty-Statistiken (Team-Kasse) ────────────────────────
 
 function get_penalty_stats_by_type(int $eventId): array {
     $stmt = get_pdo()->prepare("SELECT pt.description, pt.amount, COUNT(p.id) as count, COALESCE(SUM(CASE WHEN p.id IS NOT NULL THEN pt.amount ELSE 0 END), 0) as total FROM penalty_types pt LEFT JOIN penalties p ON pt.id = p.penalty_type_id AND p.deleted_at IS NULL WHERE pt.event_id = ? GROUP BY pt.id ORDER BY count DESC, pt.sort_order ASC");
@@ -529,10 +496,10 @@ function get_penalty_stats_by_member(int $eventId): array {
     return $stmt->fetchAll();
 }
 
-// ── Server-Admin Statistiken ────────────────────────────────
+// ── Server-Admin Statistiken (anonymisiert) ─────────────────
 
 function get_event_stats_overview(): array {
-    $sql = "SELECT e.*,
+    $sql = "SELECT e.id, e.name, e.organization_name, e.status, e.created_at, e.theme_primary,
             (SELECT COUNT(*) FROM members m WHERE m.event_id = e.id AND m.active = 1) as member_count,
             (SELECT COUNT(*) FROM sessions s WHERE s.event_id = e.id) as session_count,
             (SELECT COUNT(*) FROM attendance a JOIN sessions s2 ON a.session_id = s2.id WHERE s2.event_id = e.id AND a.status = 'present') as total_present,
@@ -542,9 +509,8 @@ function get_event_stats_overview(): array {
 }
 
 function get_global_audit_log(int $limit = 200): array {
-    $sql = "SELECT al.*, m.name as member_name, ev.name as event_name
+    $sql = "SELECT al.*, ev.name as event_name
             FROM audit_log al
-            LEFT JOIN members m ON al.member_id = m.id
             LEFT JOIN events ev ON al.event_id = ev.id
             ORDER BY al.created_at DESC
             LIMIT ?";
@@ -553,7 +519,7 @@ function get_global_audit_log(int $limit = 200): array {
     return $stmt->fetchAll();
 }
 
-// ── Rollen ─────────────────────────────────────────────────
+// ── Rollen (Event-interne Rollen, z.B. Gruppenführer) ───────
 
 function get_roles(int $eventId): array {
     $stmt = get_pdo()->prepare("SELECT * FROM roles WHERE event_id = ? ORDER BY sort_order ASC, name ASC");
@@ -593,16 +559,10 @@ function set_member_roles(int $memberId, array $roleIds): void {
     }
 }
 
-/**
- * Berechnet Rollen-Verfügbarkeit für einen Termin.
- * Gibt Array zurück: [['name'=>'GF', 'total'=>2, 'available'=>1, 'ok'=>false], ...]
- */
 function get_session_role_availability(int $sessionId, int $eventId): array {
     $roles = get_roles($eventId);
     if (empty($roles)) return [];
 
-    // Alle Mitglieder mit ihren Rollen laden
-    $members = get_members($eventId);
     $attendance = get_attendance_for_session($sessionId);
     $attLookup = [];
     foreach ($attendance as $a) {
@@ -611,7 +571,6 @@ function get_session_role_availability(int $sessionId, int $eventId): array {
 
     $result = [];
     foreach ($roles as $role) {
-        // Mitglieder mit dieser Rolle
         $stmt = get_pdo()->prepare("SELECT mr.member_id FROM member_roles mr JOIN members m ON mr.member_id = m.id WHERE mr.role_id = ? AND m.active = 1");
         $stmt->execute([$role['id']]);
         $memberIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -620,19 +579,19 @@ function get_session_role_availability(int $sessionId, int $eventId): array {
         $available = 0;
         foreach ($memberIds as $mid) {
             $status = $attLookup[$mid] ?? null;
-            // Verfügbar = nicht entschuldigt und nicht absent (also present oder noch kein Status)
             if ($status !== 'excused' && $status !== 'absent') {
                 $available++;
             }
         }
 
         $result[] = [
-            'id' => $role['id'],
-            'name' => $role['name'],
-            'total' => $total,
+            'id'        => $role['id'],
+            'name'      => $role['name'],
+            'total'     => $total,
             'available' => $available,
-            'ok' => ($available > 0),
+            'ok'        => ($available > 0),
         ];
     }
+
     return $result;
 }

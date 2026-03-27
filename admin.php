@@ -1,26 +1,12 @@
 <?php
 /**
- * LAZ Übungs-Tracker – Server-Admin
+ * BOS-Score – Server-Administration
+ * Zugang über Auth-Session + Rolle server_admin.
  */
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/lib/auth.php';
 
-$token = $_GET['token'] ?? '';
-if (!verify_server_admin_token($token)) {
-    http_response_code(403);
-    $errorMessage = 'Zugriff verweigert. Ungültiger Server-Admin-Token.';
-    require __DIR__ . '/views/partials/error.php';
-    exit;
-}
-
-// Dummy-Event für Header-Partial (Server-Admin hat kein Event)
-$event = [
-    'name' => 'Server-Administration',
-    'public_token' => '',
-    'admin_token' => '',
-];
-$isAdmin = false;
-$isServerAdmin = true;
-$serverAdminToken = $token;
+$user = require_event_role(null, ['server_admin']);
 
 require __DIR__ . '/views/server_admin.php';

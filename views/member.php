@@ -1,6 +1,7 @@
 <?php
 /**
- * Teilnehmer-Detailseite
+ * BOS-Score – Teilnehmer-Detailseite
+ * Auth: eingeloggter User sieht nur eigene Seite, Admins sehen alle.
  */
 
 $sessions = get_sessions($event['id']);
@@ -9,23 +10,20 @@ $penalties = get_penalties_for_member($member['id']);
 $penaltyTotal = get_member_penalty_total($member['id']);
 $sessionDuration = (int)($event['session_duration_hours'] ?? 3);
 $d1Enabled = (bool)($event['deadline_1_enabled'] ?? true);
+$themeColor = $event['theme_primary'] ?? '#dc2626';
 
 $totalSessions = count($sessions);
 $pastSessions = array_filter($sessions, fn($s) => $s['session_date'] <= date('Y-m-d'));
 $totalPast = count($pastSessions);
 
-// Attendance als Lookup
 $attLookup = [];
-foreach ($attendance as $a) {
-    $attLookup[$a['session_id']] = $a;
-}
+foreach ($attendance as $a) { $attLookup[$a['session_id']] = $a; }
 
 $present = count(array_filter($attendance, fn($a) => $a['status'] === 'present'));
 $excused = count(array_filter($attendance, fn($a) => $a['status'] === 'excused'));
 $absent = count(array_filter($attendance, fn($a) => $a['status'] === 'absent'));
 $pending = $totalSessions - count($attendance);
 
-// Verbleibende Termine
 $remainingD1 = count(array_filter($sessions, fn($s) => $s['session_date'] > date('Y-m-d') && $s['session_date'] <= $event['deadline_1_date']));
 $remainingD2 = count(array_filter($sessions, fn($s) => $s['session_date'] > date('Y-m-d') && $s['session_date'] <= $event['deadline_2_date']));
 
@@ -36,39 +34,41 @@ if ($d1Enabled) {
 $d2 = calculate_deadline_status($present, $event['deadline_2_count'], $event['deadline_2_date'], $totalSessions, $totalPast, $remainingD2);
 $progressD2 = $event['deadline_2_count'] > 0 ? min(100, round(($present / $event['deadline_2_count']) * 100)) : 0;
 
+$linkedMember = get_linked_member($user['id'], $event['id']);
+$isOwnPage = $linkedMember && $linkedMember['id'] === $member['id'];
+
+$memberRolesEnabled = (bool)($event['roles_enabled'] ?? false);
+$myRoles = $memberRolesEnabled ? get_member_roles($member['id']) : [];
+
 $pageTitle = $member['name'] . ' – ' . $event['name'];
 require __DIR__ . '/partials/header.php';
 ?>
 
 <?php if ($isArchived): ?>
 <div class="bg-yellow-50 border border-yellow-300 rounded-xl p-4 mb-6">
-    <p class="text-yellow-800 text-sm font-semibold">📦 Dieses Event ist archiviert und wird nur noch im Lesemodus angezeigt.</p>
+    <p class="text-yellow-800 text-sm font-semibold">📦 Dieses Event ist archiviert.</p>
 </div>
 <?php endif; ?>
 
-<!-- Breadcrumb -->
 <nav class="mb-6 text-sm">
-    <a href="index.php?event=<?= e($event['public_token']) ?>" class="text-red-600 hover:underline">← Zurück zur Übersicht</a>
+    <a href="index.php?event=<?= e($event['public_token']) ?>" class="hover:underline" style="color: <?= e($themeColor) ?>;">← Zurück zur Übersicht</a>
 </nav>
 
-<!-- Kopfbereich -->
 <div class="mb-8">
-    <h1 class="text-2xl md:text-3xl font-extrabold text-gray-900"><?= e($member['name']) ?></h1>
+    <h1 class="text-2xl md:text-3xl font-extrabold text-gray-900">
+        <?= e($member['name']) ?>
+        <?php if ($isOwnPage): ?><span class="text-base text-gray-400 font-normal ml-2">(Du)</span><?php endif; ?>
+    </h1>
     <?php if ($member['role']): ?>
         <p class="text-gray-500 mt-1"><?= e($member['role']) ?></p>
     <?php endif; ?>
-    <?php
-    $memberRolesEnabled = (bool)($event['roles_enabled'] ?? false);
-    if ($memberRolesEnabled):
-        $myRoles = get_member_roles($member['id']);
-        if (!empty($myRoles)):
-    ?>
+    <?php if (!empty($myRoles)): ?>
     <div class="flex flex-wrap gap-1 mt-2">
         <?php foreach ($myRoles as $mr): ?>
         <span class="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-medium"><?= e($mr['name']) ?></span>
         <?php endforeach; ?>
     </div>
-    <?php endif; endif; ?>
+    <?php endif; ?>
 </div>
 
 <!-- Fortschrittsbalken -->
@@ -80,8 +80,7 @@ require __DIR__ . '/partials/header.php';
             <span class="<?= $d1['class'] ?> px-2 py-1 rounded-lg text-xs font-semibold"><?= $d1['icon'] ?> <?= $present ?>/<?= $event['deadline_1_count'] ?></span>
         </div>
         <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-            <div class="h-full rounded-full transition-all <?= $progressD1 >= 100 ? 'bg-green-500' : ($progressD1 >= 70 ? 'bg-yellow-500' : 'bg-red-500') ?>"
-                 style="width: <?= $progressD1 ?>%"></div>
+            <div class="h-full rounded-full transition-all <?= $progressD1 >= 100 ? 'bg-green-500' : ($progressD1 >= 70 ? 'bg-yellow-500' : 'bg-red-500') ?>" style="width: <?= $progressD1 ?>%"></div>
         </div>
         <p class="text-xs text-gray-400 mt-1">Noch <?= max(0, $event['deadline_1_count'] - $present) ?> Teilnahmen benötigt · <?= $remainingD1 ?> Termine übrig</p>
     </div>
@@ -92,20 +91,17 @@ require __DIR__ . '/partials/header.php';
             <span class="<?= $d2['class'] ?> px-2 py-1 rounded-lg text-xs font-semibold"><?= $d2['icon'] ?> <?= $present ?>/<?= $event['deadline_2_count'] ?></span>
         </div>
         <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-            <div class="h-full rounded-full transition-all <?= $progressD2 >= 100 ? 'bg-green-500' : ($progressD2 >= 70 ? 'bg-yellow-500' : 'bg-red-500') ?>"
-                 style="width: <?= $progressD2 ?>%"></div>
+            <div class="h-full rounded-full transition-all <?= $progressD2 >= 100 ? 'bg-green-500' : ($progressD2 >= 70 ? 'bg-yellow-500' : 'bg-red-500') ?>" style="width: <?= $progressD2 ?>%"></div>
         </div>
         <p class="text-xs text-gray-400 mt-1">Noch <?= max(0, $event['deadline_2_count'] - $present) ?> Teilnahmen benötigt · <?= $remainingD2 ?> Termine übrig</p>
     </div>
 </div>
 
-<!-- Donut-Diagramm & Statistik -->
+<!-- Donut & Statistik -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
     <div class="bg-white rounded-xl shadow-sm border p-5 md:col-span-1">
         <h3 class="font-bold text-gray-800 mb-3">Übersicht</h3>
-        <div style="max-width: 220px; margin: 0 auto;">
-            <canvas id="chartDonut"></canvas>
-        </div>
+        <div style="max-width: 220px; margin: 0 auto;"><canvas id="chartDonut"></canvas></div>
     </div>
     <div class="bg-white rounded-xl shadow-sm border p-5 md:col-span-2">
         <h3 class="font-bold text-gray-800 mb-4">Statistik</h3>
@@ -130,7 +126,7 @@ require __DIR__ . '/partials/header.php';
         <?php if ($penaltyTotal > 0): ?>
         <div class="mt-4 bg-red-50 rounded-lg p-3 text-center">
             <div class="text-2xl font-bold text-red-600"><?= format_currency($penaltyTotal) ?></div>
-            <div class="text-xs text-red-500">Strafkasse</div>
+            <div class="text-xs text-red-500">Team-Kasse</div>
         </div>
         <?php endif; ?>
     </div>
@@ -138,13 +134,12 @@ require __DIR__ . '/partials/header.php';
 
 <!-- Terminliste -->
 <div style="background: white; border-radius: 12px; border: 1px solid #e5e7eb; margin-bottom: 2rem; overflow: hidden;">
-    <div style="padding: 16px 20px; background: linear-gradient(to right, #dc2626, #b91c1c); border-bottom: 1px solid #e5e7eb;">
+    <div style="padding: 16px 20px; background: linear-gradient(to right, <?= e($themeColor) ?>, <?= e($themeColor) ?>dd); border-bottom: 1px solid #e5e7eb;">
         <h2 style="font-weight: bold; color: white; margin: 0;">📅 Meine Termine</h2>
     </div>
     <?php
     $nextSessionFound = false;
     foreach ($sessions as $s):
-        $sessionStart = new DateTime($s['session_date'] . ' ' . $s['session_time']);
         $sessionEnded = is_session_ended($s, $sessionDuration);
         $sessionFuture = is_session_in_future($s);
         $isPast = $sessionEnded;
@@ -152,13 +147,8 @@ require __DIR__ . '/partials/header.php';
         $att = $attLookup[$s['id']] ?? null;
         $status = $att['status'] ?? null;
 
-        // Nächster Termin = erster noch nicht beendeter Termin
         $isNext = false;
-        if (!$nextSessionFound && !$sessionEnded) {
-            $isNext = true;
-            $nextSessionFound = true;
-        }
-
+        if (!$nextSessionFound && !$sessionEnded) { $isNext = true; $nextSessionFound = true; }
         if ($sessionEnded && !$status) $status = 'absent';
 
         $statusConfig = [
@@ -168,48 +158,23 @@ require __DIR__ . '/partials/header.php';
         ];
         $statusInfo = $status ? ($statusConfig[$status] ?? null) : null;
 
-        // Kann der Teilnehmer seinen Entschuldigungsstatus ändern?
-        $canChange = !$isArchived && can_member_change_excuse($s, $att);
+        $canChange = $isOwnPage && !$isArchived && can_member_change_excuse($s, $att);
         $isSelfExcused = ($status === 'excused' && $att && $att['excused_by'] === 'member');
 
-        // Zeilen-Styling
-        if ($isNext) {
-            $rowBg = '#fed7aa';
-            $rowBorder = 'border-left: 5px solid #ea580c;';
-            $textColor = '#111827';
-            $textWeight = 'font-weight: 700;';
-        } elseif ($isToday && !$sessionEnded) {
-            $rowBg = '#fee2e2';
-            $rowBorder = '';
-            $textColor = '#111827';
-            $textWeight = 'font-weight: 600;';
-        } elseif ($isPast) {
-            $rowBg = '#f3f4f6';
-            $rowBorder = '';
-            $textColor = '#9ca3af';
-            $textWeight = '';
-        } else {
-            $rowBg = '#ffffff';
-            $rowBorder = '';
-            $textColor = '#1f2937';
-            $textWeight = '';
-        }
+        if ($isNext) { $rowBg = '#fed7aa'; $rowBorder = 'border-left: 5px solid #ea580c;'; $textColor = '#111827'; $textWeight = 'font-weight: 700;'; }
+        elseif ($isToday && !$sessionEnded) { $rowBg = '#fee2e2'; $rowBorder = ''; $textColor = '#111827'; $textWeight = 'font-weight: 600;'; }
+        elseif ($isPast) { $rowBg = '#f3f4f6'; $rowBorder = ''; $textColor = '#9ca3af'; $textWeight = ''; }
+        else { $rowBg = '#ffffff'; $rowBorder = ''; $textColor = '#1f2937'; $textWeight = ''; }
     ?>
-    <div style="padding: 16px 20px; background-color: <?= $rowBg ?>; <?= $rowBorder ?> <?= $textWeight ?> border-bottom: 1px solid #e5e7eb;" id="session-<?= $s['id'] ?>">
+    <div style="padding: 16px 20px; background-color: <?= $rowBg ?>; <?= $rowBorder ?> <?= $textWeight ?> border-bottom: 1px solid #e5e7eb;">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
                 <div style="color: <?= $textColor ?>; <?= $textWeight ?>">
                     <?= format_weekday($s['session_date']) ?>, <?= format_date($s['session_date']) ?> – <?= format_time($s['session_time']) ?> Uhr
-                    <?php if ($isToday && !$sessionEnded): ?>
-                        <span style="font-size: 11px; background-color: #dc2626; color: white; padding: 2px 8px; border-radius: 9999px; margin-left: 4px; font-weight: 600;">HEUTE</span>
-                    <?php endif; ?>
-                    <?php if ($isNext && !$isToday): ?>
-                        <span style="font-size: 11px; background-color: #ea580c; color: white; padding: 2px 8px; border-radius: 9999px; margin-left: 4px; font-weight: 600;">NÄCHSTER</span>
-                    <?php endif; ?>
+                    <?php if ($isToday && !$sessionEnded): ?><span style="font-size: 11px; background-color: #dc2626; color: white; padding: 2px 8px; border-radius: 9999px; margin-left: 4px;">HEUTE</span><?php endif; ?>
+                    <?php if ($isNext && !$isToday): ?><span style="font-size: 11px; background-color: #ea580c; color: white; padding: 2px 8px; border-radius: 9999px; margin-left: 4px;">NÄCHSTER</span><?php endif; ?>
                 </div>
-                <?php if ($s['comment']): ?>
-                    <div style="font-size: 14px; color: <?= $isPast ? '#d1d5db' : '#6b7280' ?>;"><?= e($s['comment']) ?></div>
-                <?php endif; ?>
+                <?php if ($s['comment']): ?><div style="font-size: 14px; color: <?= $isPast ? '#d1d5db' : '#6b7280' ?>;"><?= e($s['comment']) ?></div><?php endif; ?>
                 <?php if ($att && $att['excused_at'] && $status === 'excused'): ?>
                     <div style="font-size: 12px; color: <?= $isPast ? '#d1d5db' : '#9ca3af' ?>; margin-top: 4px;">
                         Entschuldigt <?= format_datetime($att['excused_at']) ?>
@@ -219,25 +184,17 @@ require __DIR__ . '/partials/header.php';
             </div>
             <div class="flex items-center gap-2 flex-shrink-0">
                 <?php if ($statusInfo): ?>
-                    <span class="<?= $statusInfo['class'] ?> px-3 py-1 rounded-lg text-xs font-semibold">
-                        <?= $statusInfo['icon'] ?> <?= $statusInfo['text'] ?>
-                    </span>
+                    <span class="<?= $statusInfo['class'] ?> px-3 py-1 rounded-lg text-xs font-semibold"><?= $statusInfo['icon'] ?> <?= $statusInfo['text'] ?></span>
                 <?php elseif (!$isPast): ?>
                     <span class="text-gray-400 bg-gray-100 px-3 py-1 rounded-lg text-xs font-semibold">⏳ Ausstehend</span>
                 <?php endif; ?>
 
                 <?php if ($canChange && $status !== 'excused'): ?>
-                    <!-- Entschuldigen-Button: nur wenn Termin noch nicht gestartet -->
                     <button onclick="excuseMe(<?= $s['id'] ?>, <?= $member['id'] ?>)"
-                            class="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap">
-                        Entschuldigen
-                    </button>
+                            class="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap">Entschuldigen</button>
                 <?php elseif ($canChange && $isSelfExcused): ?>
-                    <!-- Zurückziehen-Button: nur wenn selbst entschuldigt UND Termin noch nicht gestartet -->
                     <button onclick="withdrawExcuse(<?= $s['id'] ?>, <?= $member['id'] ?>)"
-                            class="bg-gray-400 hover:bg-gray-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap">
-                        Zurückziehen
-                    </button>
+                            class="bg-gray-400 hover:bg-gray-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap">Zurückziehen</button>
                 <?php endif; ?>
             </div>
         </div>
@@ -248,7 +205,7 @@ require __DIR__ . '/partials/header.php';
 <!-- Strafenliste -->
 <?php if (!empty($penalties)): ?>
 <div class="bg-white rounded-xl shadow-sm border overflow-hidden mb-8">
-    <div class="px-5 py-4 border-b flex justify-between items-center bg-gradient-to-r from-red-600 to-red-700">
+    <div class="px-5 py-4 border-b flex justify-between items-center" style="background: linear-gradient(to right, <?= e($themeColor) ?>, <?= e($themeColor) ?>dd);">
         <h2 class="font-bold text-white">💰 Meine Strafen</h2>
         <span class="text-white font-bold"><?= format_currency($penaltyTotal) ?></span>
     </div>
@@ -267,57 +224,43 @@ require __DIR__ . '/partials/header.php';
 <?php endif; ?>
 
 <script>
-// Donut-Diagramm
 document.addEventListener('DOMContentLoaded', function() {
     new Chart(document.getElementById('chartDonut'), {
         type: 'doughnut',
         data: {
             labels: ['Anwesend', 'Entschuldigt', 'Unentschuldigt', 'Ausstehend'],
-            datasets: [{
-                data: [<?= $present ?>, <?= $excused ?>, <?= $absent ?>, <?= $pending ?>],
-                backgroundColor: ['#22c55e', '#f59e0b', '#ef4444', '#d1d5db'],
-                borderWidth: 0,
-            }]
+            datasets: [{ data: [<?= $present ?>, <?= $excused ?>, <?= $absent ?>, <?= $pending ?>], backgroundColor: ['#22c55e', '#f59e0b', '#ef4444', '#d1d5db'], borderWidth: 0 }]
         },
-        options: {
-            responsive: true,
-            cutout: '60%',
-            plugins: {
-                legend: { position: 'bottom', labels: { padding: 12, boxWidth: 12 } }
-            }
-        }
+        options: { responsive: true, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { padding: 12, boxWidth: 12 } } } }
     });
 });
 
-// Entschuldigung
 async function excuseMe(sessionId, memberId) {
     if (!confirm('Möchtest du dich für diesen Termin entschuldigen?')) return;
-
-    const result = await apiCall('excuse', {
-        session_id: sessionId,
-        member_id: memberId
-    });
-
-    if (result.success) {
-        if (result.short_notice) {
-            showToast(result.message, 'warning');
-        }
-        setTimeout(() => location.reload(), 1500);
-    }
+    const form = new FormData();
+    form.append('action', 'member_excuse');
+    form.append('session_id', sessionId);
+    form.append('member_id', memberId);
+    form.append('event_id', <?= $event['id'] ?>);
+    form.append('csrf_token', '<?= csrf_token() ?>');
+    const r = await fetch('api.php', { method: 'POST', body: form });
+    const res = await r.json();
+    if (res.message) alert(res.message);
+    if (res.success) setTimeout(() => location.reload(), 1000);
 }
 
-// Entschuldigung zurückziehen
 async function withdrawExcuse(sessionId, memberId) {
-    if (!confirm('Möchtest du deine Entschuldigung zurückziehen? Du giltst dann wieder als teilnehmend.')) return;
-
-    const result = await apiCall('withdraw_excuse', {
-        session_id: sessionId,
-        member_id: memberId
-    });
-
-    if (result.success) {
-        setTimeout(() => location.reload(), 1500);
-    }
+    if (!confirm('Möchtest du deine Entschuldigung zurückziehen?')) return;
+    const form = new FormData();
+    form.append('action', 'member_withdraw_excuse');
+    form.append('session_id', sessionId);
+    form.append('member_id', memberId);
+    form.append('event_id', <?= $event['id'] ?>);
+    form.append('csrf_token', '<?= csrf_token() ?>');
+    const r = await fetch('api.php', { method: 'POST', body: form });
+    const res = await r.json();
+    if (res.message) alert(res.message);
+    if (res.success) setTimeout(() => location.reload(), 1000);
 }
 </script>
 
