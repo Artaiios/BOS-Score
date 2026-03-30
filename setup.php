@@ -14,6 +14,13 @@ $errors = [];
 $success = false;
 $magicLinkSent = false;
 
+// ── CSRF-Prüfung für alle POST-Requests ────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verify_csrf($_POST['csrf_token'] ?? '')) {
+        die('Ungültige Anfrage (CSRF).');
+    }
+}
+
 // ── Schritt 2: Server-Admin registrieren ────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['step']) && $_POST['step'] === 'admin') {
     $orgName      = trim($_POST['organization_name'] ?? '');
@@ -76,6 +83,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['step']) && $_POST['st
         $pdo = new PDO($dsn, DB_USER, DB_PASS, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         ]);
+
+        // SEC-09: DB_NAME validieren bevor er in exec() verwendet wird
+        if (!preg_match('/^[a-zA-Z0-9_]{1,64}$/', DB_NAME)) {
+            $errors[] = 'Ungültiger Datenbankname in config.php. Nur Buchstaben, Ziffern und Unterstriche erlaubt (max. 64 Zeichen).';
+            throw new Exception('Ungültiger Datenbankname.');
+        }
 
         $pdo->exec("CREATE DATABASE IF NOT EXISTS `" . DB_NAME . "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         $pdo->exec("USE `" . DB_NAME . "`");
@@ -418,6 +431,7 @@ $dbDone = !empty($_SESSION['setup_db_done']);
 
             <form method="POST">
                 <input type="hidden" name="step" value="admin">
+                <?= csrf_field() ?>
                 <div class="space-y-4 mb-6">
                     <div>
                         <label class="text-xs font-semibold text-gray-600">Name der Organisation</label>
@@ -489,6 +503,7 @@ $dbDone = !empty($_SESSION['setup_db_done']);
 
             <form method="POST">
                 <input type="hidden" name="step" value="database">
+                <?= csrf_field() ?>
                 <button type="submit" class="w-full bg-red-600 text-white font-semibold py-3 rounded-xl hover:bg-red-700 transition"
                         onclick="return confirm('Bestehende Tabellen werden gelöscht und neu erstellt. Fortfahren?')">
                     🗄️ Datenbank erstellen

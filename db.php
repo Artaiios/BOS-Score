@@ -16,7 +16,7 @@ function get_pdo(): PDO {
         ];
         $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
         $pdo->exec("SET NAMES utf8mb4");
-        $pdo->exec("SET time_zone = '+01:00'");
+        $pdo->exec("SET time_zone = '+00:00'");
     }
     return $pdo;
 }
@@ -184,8 +184,14 @@ function get_member(int $id): ?array {
 }
 
 function create_member(int $eventId, string $name, string $email = '', string $role = ''): int {
+    $name = mb_substr(trim($name), 0, 255);
+    $email = mb_substr(strtolower(trim($email)), 0, 255);
+    $role = mb_substr(trim($role), 0, 100);
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new \InvalidArgumentException('Ungültige E-Mail-Adresse.');
+    }
     $stmt = get_pdo()->prepare("INSERT INTO members (event_id, name, email, role, active, created_at) VALUES (?, ?, ?, ?, 1, NOW())");
-    $stmt->execute([$eventId, trim($name), strtolower(trim($email)), trim($role)]);
+    $stmt->execute([$eventId, $name, $email, $role]);
     return (int)get_pdo()->lastInsertId();
 }
 
@@ -644,6 +650,57 @@ function get_session_role_availability(int $sessionId, int $eventId): array {
             'ok'        => ($available > 0),
         ];
     }
+
+    return $result;
+}
+
+// ── DSGVO: Automatische Datenbereinigung ────────────────────
+
+/**
+ * Bereinigt abgelaufene Daten gemäß DSGVO-Speicherbegrenzungsprinzip.
+ * Wird per Lazy-Trigger (1% der Requests) oder manuell aufgerufen.
+ *
+ * Löscht:
+ * - Soft-gelöschte Accounts nach SOFT_DELETE_RETENTION_DAYS
+ * - Abgelaufene Magic Links (> 1 Tag nach Ablauf)
+ * - Alte Rate-Limit-Einträge (> 48 Stunden)
+ * - Abgelaufene Sessions (> 30 Tage nach Ablauf)
+ * - Alte Audit-Log-Einträge nach AUDIT_LOG_RETENTION_DAYS
+ *
+ * @return array Anzahl gelöschter Einträge pro Tabelle
+ */
+function run_data_cleanup(): array {
+    $pdo = get_pdo();
+    $result = [];
+
+    // Soft-gelöschte Accounts endgültig entfernen
+    $ret = defined('SOFT_DELETE_RETENTION_DAYS') ? SOFT_DELETE_RETENTION_DAYS : 30;
+    $stmt = $pdo->prepare("DELETE FROM user_accounts WHERE deleted_at IS NOT NULL AND deleted_at < DATE_SUB(NOW(), INTERVAL ? DAY)");
+    $stmt->execute([$ret]);
+    $result['user_accounts'] = $stmt->rowCount();
+
+    // Abgelaufene Magic Links
+    $stmt = $pdo->exec("DELETE FROM magic_links WHERE expires_at < DATE_SUB(NOW(), INTERVAL 1 DAY)");
+    $result['magic_links'] = (int)$stmt;
+
+    // Alte Rate-Limit-Einträge
+    $stmt = $pdo->exec("DELETE FROM rate_limits WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 48 HOUR)");
+    $result['rate_limits'] = (int)$stmt;
+
+    // Abgelaufene Sessions
+    $stmt = $pdo->exec("DELETE FROM user_sessions WHERE expires_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+    $result['user_sessions'] = (int)$stmt;
+
+    // Audit-Log nach Aufbewahrungsfrist
+    $auditDays = defined('AUDIT_LOG_RETENTION_DAYS') ? AUDIT_LOG_RETENTION_DAYS : 365;
+    $stmt = $pdo->prepare("DELETE FROM audit_log WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)");
+    $stmt->execute([$auditDays]);
+    $result['audit_log'] = $stmt->rowCount();
+
+    // Consent-Log: Einträge gelöschter Accounts (Kaskade greift bereits,
+    // aber sicherheitshalber verwaiste Einträge aufräumen)
+    $stmt = $pdo->exec("DELETE FROM consent_log WHERE user_account_id NOT IN (SELECT id FROM user_accounts)");
+    $result['consent_log'] = (int)$stmt;
 
     return $result;
 }

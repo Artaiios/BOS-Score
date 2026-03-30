@@ -14,8 +14,19 @@ AddDefaultCharset UTF-8
 <IfModule mod_headers.c>
     Header set X-Content-Type-Options "nosniff"
     Header set X-Frame-Options "SAMEORIGIN"
-    Header set X-XSS-Protection "1; mode=block"
+    Header set X-XSS-Protection "0"
     Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    # CSP: Zunächst als Report-Only aktivieren, nach erfolgreichem Test
+    # "Content-Security-Policy-Report-Only" durch "Content-Security-Policy" ersetzen
+    Header set Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-ancestors 'none'"
+</IfModule>
+
+# HTTPS erzwingen
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} off
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 </IfModule>
 
 # Verzeichnislisting deaktivieren

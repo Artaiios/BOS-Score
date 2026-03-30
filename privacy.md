@@ -51,7 +51,7 @@ Die Verarbeitung erfolgt auf Grundlage von:
 
 ### 4.3 Technische Daten
 
-- **IP-Adresse** — wird ausschließlich als kryptografischer Hash (SHA-256) gespeichert. Die originale IP-Adresse wird zu keinem Zeitpunkt in der Datenbank abgelegt.
+- **IP-Adresse** — wird ausschließlich als kryptografischer HMAC-Hash (SHA-256 mit geheimem Schlüssel) gespeichert. Die originale IP-Adresse wird zu keinem Zeitpunkt in der Datenbank abgelegt. Durch die Verwendung eines geheimen Schlüssels ist eine Rückrechnung der IP-Adresse aus dem Hash nicht möglich.
 - **Browser-Informationen (User-Agent)** — werden ausschließlich als Hash gespeichert. Zusätzlich wird ein allgemeiner Gerätetyp abgeleitet (z.B. „Mobile/Android", „Desktop/Windows"), um dir eine verständliche Session-Übersicht zu ermöglichen.
 - **Session-Daten** — werden serverseitig in der Datenbank gespeichert und können von dir jederzeit eingesehen und widerrufen werden.
 
@@ -97,6 +97,18 @@ Personenbezogene Daten werden **nicht** an Dritte weitergegeben, mit folgenden A
 
 - **E-Mail-Versand:** Der Versand von Anmeldelinks erfolgt über einen SMTP-Server, der vom Betreiber konfiguriert wird. Dabei werden E-Mail-Adresse und Nachrichteninhalt an den jeweiligen E-Mail-Dienstleister übermittelt.
 - **Wetter-API:** Für die optionale Wetteranzeige im Dashboard werden Koordinaten (keine personenbezogenen Daten) an die Open-Meteo API übermittelt.
+
+---
+
+## 7a. Externe Dienste und CDN-Ressourcen
+
+{{APP_NAME}} lädt bei jedem Seitenaufruf technisch notwendige Bibliotheken von externen Servern (Content Delivery Networks). Dabei wird deine IP-Adresse an diese Dienste übermittelt:
+
+- **Open-Meteo** (api.open-meteo.com, geocoding-api.open-meteo.com) — Wetterdaten und Standortsuche. Open-Meteo ist ein europäischer Dienst mit DSGVO-konformer Datenverarbeitung. Es werden keine personenbezogenen Daten übermittelt, lediglich die GPS-Koordinaten des konfigurierten Standorts.
+- **Tailwind CSS CDN** (cdn.tailwindcss.com) — CSS-Framework für die Benutzeroberfläche. Bei jedem Seitenaufruf wird deine IP-Adresse an den CDN-Betreiber (Cloudflare) übermittelt.
+- **Chart.js / jsDelivr CDN** (cdn.jsdelivr.net) — JavaScript-Bibliothek für Diagramme. Bei jedem Seitenaufruf wird deine IP-Adresse an den CDN-Betreiber übermittelt.
+
+Die Nutzung externer CDNs erfolgt aus technischen Gründen (Performance, Verfügbarkeit). Eine lokale Bereitstellung dieser Bibliotheken ist in einer zukünftigen Version geplant, um die Datenübermittlung an Dritte vollständig zu vermeiden.
 
 ---
 
@@ -156,8 +168,8 @@ Du kannst einzelne Sessions oder alle Sessions gleichzeitig widerrufen (abmelden
 
 ## 11. Technische Sicherheitsmaßnahmen
 
-- Alle Authentifizierungs-Token werden ausschließlich als kryptografische Hashes (SHA-256) gespeichert.
-- IP-Adressen und Browser-Kennungen werden ausschließlich als Hash gespeichert — ein Rückschluss auf die originalen Daten ist nicht möglich.
+- Alle Authentifizierungs-Token werden ausschließlich als kryptografische Hashes (HMAC-SHA-256) gespeichert.
+- IP-Adressen und Browser-Kennungen werden ausschließlich als HMAC-Hash mit geheimem Schlüssel gespeichert — ein Rückschluss auf die originalen Daten ist ohne Kenntnis des Schlüssels nicht möglich.
 - Magic Links sind einmalig verwendbar und verfallen nach 30 Minuten.
 - Alle Formulare sind gegen Cross-Site Request Forgery (CSRF) geschützt.
 - Datenbankzugriffe erfolgen ausschließlich über parametrisierte Abfragen (Prepared Statements).

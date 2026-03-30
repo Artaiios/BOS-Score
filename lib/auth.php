@@ -445,11 +445,16 @@ function accept_admin_invitation(int $invitationId): void {
  * Legt einen neuen User-Account an.
  */
 function create_user_account(string $email, string $displayName): int {
+    $email = mb_substr(strtolower(trim($email)), 0, 255);
+    $displayName = mb_substr(trim($displayName), 0, 100);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new \InvalidArgumentException('Ungültige E-Mail-Adresse.');
+    }
     $stmt = get_pdo()->prepare("
         INSERT INTO user_accounts (email, display_name, consent_given_at, consent_version)
         VALUES (?, ?, NOW(), ?)
     ");
-    $stmt->execute([strtolower($email), $displayName, PRIVACY_VERSION]);
+    $stmt->execute([$email, $displayName, PRIVACY_VERSION]);
     return (int)get_pdo()->lastInsertId();
 }
 

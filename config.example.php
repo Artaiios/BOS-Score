@@ -16,7 +16,7 @@ define('DB_CHARSET', 'utf8mb4');
 
 // ── Anwendungs-Einstellungen ────────────────────────────────
 define('APP_NAME', 'BOS-Score');
-define('APP_VERSION', '1.0.0');
+define('APP_VERSION', '1.0.1');
 define('TIMEZONE', 'Europe/Berlin');
 
 // ── Setup-Sperre ────────────────────────────────────────────
@@ -44,6 +44,17 @@ define('RATE_LIMIT_REGISTRATIONS_PER_HOUR', 10);
 define('PRIVACY_VERSION', '1.0');
 define('PRIVACY_FILE', __DIR__ . '/privacy.md');
 define('SOFT_DELETE_RETENTION_DAYS', 30);
+define('AUDIT_LOG_RETENTION_DAYS', 365);
+
+// ── Sicherheit ──────────────────────────────────────────────
+// HMAC-Secret für IP-/Token-Hashing (DSGVO-konforme Pseudonymisierung)
+// Einmalig generieren: php -r "echo bin2hex(random_bytes(32));"
+// NIEMALS in Git committen! Nur in config.php, nicht in config.example.php.
+define('HASH_SECRET', 'HIER_DEIN_HASH_SECRET_EINFUEGEN');
+
+// Basis-URL der Anwendung (verhindert Host-Header-Injection)
+// Beispiel: 'https://meine-domain.de/bos-score' oder 'https://meine-domain.de'
+define('APP_BASE_URL', 'https://DEINE-DOMAIN.de/bos-score');
 
 // ── Session-Cookie-Name ─────────────────────────────────────
 define('AUTH_COOKIE_NAME', 'bos_score_session');
@@ -57,6 +68,10 @@ date_default_timezone_set(TIMEZONE);
 if (DEBUG_MODE) {
     error_reporting(E_ALL);
     ini_set('display_errors', '1');
+    // Warnung wenn DEBUG_MODE auf einem Nicht-Localhost-System aktiv ist
+    if (!in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)) {
+        error_log('BOS-Score SICHERHEITSWARNUNG: DEBUG_MODE ist auf einem Produktivsystem aktiv! (' . ($_SERVER['HTTP_HOST'] ?? 'unknown') . ')');
+    }
 } else {
     error_reporting(0);
     ini_set('display_errors', '0');
@@ -127,6 +142,11 @@ function redirect(string $url): void {
 }
 
 function get_base_url(): string {
+    // APP_BASE_URL nutzen falls definiert (verhindert Host-Header-Injection)
+    if (defined('APP_BASE_URL') && APP_BASE_URL !== 'https://DEINE-DOMAIN.de/bos-score') {
+        return rtrim(APP_BASE_URL, '/');
+    }
+    // Fallback für Entwicklung/Setup (nicht für Produktion empfohlen)
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
     $path = dirname($_SERVER['SCRIPT_NAME']);
@@ -140,7 +160,7 @@ function is_https(): bool {
 }
 
 function hash_value(string $value): string {
-    return hash('sha256', $value);
+    return hash_hmac('sha256', $value, HASH_SECRET);
 }
 
 function parse_device_label(string $userAgent): string {

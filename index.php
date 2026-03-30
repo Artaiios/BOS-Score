@@ -17,6 +17,11 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/lib/auth.php';
 
+// DSGVO-02: Lazy Data Cleanup (1% der Requests)
+if (mt_rand(1, 100) === 1) {
+    try { run_data_cleanup(); } catch (Exception $e) { /* Cleanup-Fehler nicht dem User zeigen */ }
+}
+
 // ── Magic Link konsumieren ──────────────────────────────────
 if (isset($_GET['magic'])) {
     $token = $_GET['magic'];
@@ -29,6 +34,9 @@ if (isset($_GET['magic'])) {
         require __DIR__ . '/views/partials/error.php';
         exit;
     }
+
+    // SEC-07: Session Fixation verhindern — neue Session-ID nach Login
+    session_regenerate_id(true);
 
     // Session erstellen
     create_session($result['user_id'], $result['remember_me']);

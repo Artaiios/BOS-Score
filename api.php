@@ -7,7 +7,17 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/lib/auth.php';
 
-$action = $_POST['action'] ?? $_GET['action'] ?? '';
+// SEC-08: GET-Aktionen auf Leseoperationen beschränken
+$readOnlyActions = ['geocode'];
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $action = $_GET['action'] ?? '';
+    if (!in_array($action, $readOnlyActions, true)) {
+        json_response(['success' => false, 'message' => 'Methode nicht erlaubt.'], 405);
+    }
+} else {
+    $action = $_POST['action'] ?? '';
+}
 
 // CSRF-Prüfung für alle POST-Requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
