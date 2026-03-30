@@ -16,7 +16,7 @@ define('DB_CHARSET', 'utf8mb4');
 
 // ── Anwendungs-Einstellungen ────────────────────────────────
 define('APP_NAME', 'BOS-Score');
-define('APP_VERSION', '1.0.1');
+define('APP_VERSION', '1.0.2');
 define('TIMEZONE', 'Europe/Berlin');
 
 // ── Setup-Sperre ────────────────────────────────────────────
@@ -41,7 +41,7 @@ define('RATE_LIMIT_MAGIC_LINKS_PER_HOUR', 3);
 define('RATE_LIMIT_REGISTRATIONS_PER_HOUR', 10);
 
 // ── Datenschutz (DSGVO) ────────────────────────────────────
-define('PRIVACY_VERSION', '1.0');
+define('PRIVACY_VERSION', '1.1');
 define('ORGANIZATION_ADDRESS', 'ADRESSE_DER_ORGA'); // eine echte Adresse, "Straße NR, PLZ ORT"
 define('PRIVACY_FILE', __DIR__ . '/privacy.md');
 define('SOFT_DELETE_RETENTION_DAYS', 30);
