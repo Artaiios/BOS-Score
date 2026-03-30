@@ -42,6 +42,7 @@ define('RATE_LIMIT_REGISTRATIONS_PER_HOUR', 10);
 
 // ── Datenschutz (DSGVO) ────────────────────────────────────
 define('PRIVACY_VERSION', '1.0');
+define('ORGANIZATION_ADDRESS', 'ADRESSE_DER_ORGA'); // eine echte Adresse, "Straße NR, PLZ ORT"
 define('PRIVACY_FILE', __DIR__ . '/privacy.md');
 define('SOFT_DELETE_RETENTION_DAYS', 30);
 define('AUDIT_LOG_RETENTION_DAYS', 365);
