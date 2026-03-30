@@ -265,6 +265,33 @@ switch ($action) {
         json_response($result);
         break;
 
+    case 'toggle_roles':
+        $user = require_auth();
+        $eventId = (int)($_POST['event_id'] ?? 0);
+        if (!has_event_role($user['id'], $eventId, ['admin']) && !is_server_admin($user['id'])) {
+            json_response(['success' => false, 'message' => 'Keine Berechtigung.'], 403);
+        }
+        $enabled = !empty($_POST['enabled']);
+        update_event($eventId, ['roles_enabled' => $enabled ? 1 : 0]);
+        audit_log($eventId, $user['id'], 'toggle_roles', 'Rollen ' . ($enabled ? 'aktiviert' : 'deaktiviert'));
+        json_response(['success' => true]);
+        break;
+
+    case 'geocode':
+        $query = trim($_GET['query'] ?? $_POST['query'] ?? '');
+        if (empty($query)) json_response(['success' => false, 'message' => 'Kein Suchbegriff.'], 400);
+        $url = 'https://geocoding-api.open-meteo.com/v1/search?name=' . urlencode($query) . '&count=5&language=de';
+        $ctx = stream_context_create(['http' => ['timeout' => 5, 'ignore_errors' => true]]);
+        $json = @file_get_contents($url, false, $ctx);
+        if (!$json) json_response(['success' => false, 'message' => 'Geocoding-Fehler.'], 502);
+        $data = json_decode($json, true);
+        $results = [];
+        foreach ($data['results'] ?? [] as $r) {
+            $results[] = ['name' => $r['name'], 'admin1' => $r['admin1'] ?? '', 'country' => $r['country'] ?? '', 'lat' => $r['latitude'], 'lng' => $r['longitude']];
+        }
+        json_response(['success' => true, 'results' => $results]);
+        break;
+
     default:
         json_response(['success' => false, 'message' => 'Unbekannte Aktion.'], 400);
 }

@@ -1,11 +1,27 @@
+# Konfiguration (enthält Zugangsdaten)
 config.php
+
+# PHPMailer (wird per install_phpmailer.sh installiert)
+lib/phpmailer/
+
+# Update-Skripte (werden per Release bereitgestellt)
+update.php
 update_v*.php
-diagnose.php
+diag.php
+
+# Exports
 exports/*.csv
+exports/*.json
+
+# OS
 .DS_Store
 Thumbs.db
-*.log
+
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# Logs
+*.log

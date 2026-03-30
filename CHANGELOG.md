@@ -1,51 +1,66 @@
 # Changelog
 
-Alle wichtigen Änderungen an BOS-Score werden hier dokumentiert.
+Alle nennenswerten Änderungen an BOS-Score werden hier dokumentiert.
 
-## [0.9.1] – 2026-03-27
+## v1.0.0 (2026-03-30)
 
-### Bugfixes
+### Erstveröffentlichung
 
-**Kritisch — HTTP 500 auf allen Seiten**
-- `lib/auth.php`: Funktionsname `get_current_user()` kollidiert mit gleichnamiger PHP Built-in-Funktion (vorhanden seit PHP 4). Umbenannt zu `get_logged_in_user()` in allen betroffenen Dateien: `lib/auth.php`, `index.php`, `views/partials/header.php`, `views/consent_required.php`, `views/accept_admin_invite.php`
+BOS-Score ist ein Fork des [LAZ Übungs-Tracker](https://github.com/Artaiios/Feuerwehr_LAZ_Tool), generalisiert für alle BOS-Organisationen (THW, DRK, DLRG, Feuerwehr und andere).
 
-**Kritisch — PHP Parse Error**
-- `lib/mail.php` Zeilen 146 + 198: Typografische Anführungszeichen (`„` `"`) in interpolierten PHP-Strings verursachen Parse Error. Auf sichere String-Konkatenation umgestellt
-- `views/server_admin.php` Zeilen 67, 78, 90: Gleicher Fehler in `$_SESSION`-Success-Messages. Ebenfalls korrigiert
+### Kernfunktionen
 
-**Fehlende Datenbanktabelle**
-- `user_consents` Tabelle fehlte in der initialen Migration (setup.php Schritt 1 muss erneut ausgeführt werden bei Neuinstallationen)
+**Authentifizierung & DSGVO**
+- Passwortlose Anmeldung per Magic Link (kein Passwort nötig)
+- DSGVO-konform: IP-Hashing, Einwilligungs-Protokollierung, Datenexport, Account-Löschung
+- Rollenmodell: Server-Admin → Event-Admin → Teilnehmer
+- Rate-Limiting gegen Brute-Force
+- Session-Verwaltung mit Geräte-Erkennung
 
----
+**Event-Verwaltung**
+- Multi-Event-Betrieb auf einem Server
+- Event-Theming (eigene Primärfarbe pro Event)
+- Einladungssystem: Links oder direkte E-Mail-Einladung
+- Selbstregistrierung mit Datenschutz-Einwilligung (DSGVO-konform)
+- Admin kann sich selbst als Teilnehmer registrieren
 
-## [0.9.0] – 2026-03-27
+**Dashboard**
+- Frist-Countdown mit Tagen und verbleibenden Terminen
+- Wetter-Widget (Open-Meteo API, serverseitig gecacht)
+- Teilnahme-Charts (pro Teilnehmer + Zeitverlauf)
+- Persönlicher Fortschrittsbereich (Mein Status)
+- Dashboard-Ankündigungen (zeitlich begrenzt, durch Admin konfigurierbar)
+- Entschuldigung direkt in der Terminliste (kein Umweg über Profil)
+- Sortierbare Teilnehmer-Tabelle mit Frist-Status
 
-### Neu (Fork von LAZ Übungs-Tracker v1.7.3)
+**Admin-Bereich (10 Tabs)**
+- Übersicht: Statistik-Karten, Ankündigungs-Verwaltung, Event-URL
+- Einladungen: Links erstellen/deaktivieren, direkte E-Mail-Einladung, Registrierungen bestätigen/ablehnen
+- Anwesenheit: Aufklappbare Panels pro Termin, Ein-Klick-Erfassung
+- Teilnehmer: Name, Funktion, E-Mail, Aktiv-Status bearbeiten
+- Team-Kasse: Strafen zuweisen/löschen, Donut- und Balken-Charts
+- Termine: Einzelerstellung, Bearbeitung, Bulk-Import (DD.MM.YYYY HH:MM Kommentar)
+- Rollen: Anlegen, pro Teilnehmer zuweisen, Verfügbarkeits-Anzeige
+- Admins: Event-Admins verwalten und einladen
+- Einstellungen: Sub-Tabs Allgemein (Name, Status, Fristen, Farbe, Kontakt-E-Mail) / Strafenkatalog (Anlegen, inline bearbeiten, Sortierung) / Standort (Geocoding per Open-Meteo)
+- Audit-Log: Filterbarer Log aller Admin-Aktionen mit CSV-Export
 
-**Projekt**
-- Fork als eigenständiges Projekt unter dem Namen "BOS-Score"
-- Universell einsetzbar für alle BOS-Organisationen (Feuerwehr, THW, DRK, DLRG, etc.)
-- "Strafkasse" → "Team-Kasse" (geschlechtsneutral)
+**Server-Administration (5 Tabs)**
+- Übersicht: Globale Statistiken, Server-Admin-Liste, letzte Aktivitäten, System-Info
+- Events: Event erstellen, archivieren, reaktivieren, löschen. Event-Admins pro Event sichtbar
+- Server-Logs: Globales Audit-Log mit Benutzer, Event, Typ-Filter und CSV-Export
+- Einstellungen: Organisationsname und Kontakt-E-Mail
+- Benutzerverwaltung: Server-Admins hinzufügen/entfernen, alle registrierten Accounts mit Rollen
 
-**Authentifizierungssystem**
-- Magic-Link-basierte Authentifizierung (kein Passwort nötig)
-- Langlebige Sessions mit konfigurierbarer Lebensdauer (Standard: 30 Tage)
-- Session-Verwaltung: alle aktiven Geräte einsehen und einzeln/gesamt widerrufen
-- "Angemeldet bleiben"-Checkbox (explizites Opt-in)
-- Rate-Limiting: max. 3 Magic Links / Stunde / E-Mail
-- DSGVO-konform: IPs nur als SHA-256-Hash gespeichert
+**Breadcrumb-Navigation**
+- Klare Hierarchie im Header: 🏠 BOS-Score / Event-Name / ⚙️ Verwaltung (oder 👤 Teilnehmer)
+- Kontextabhängige Links zum Wechseln zwischen Ebenen
 
-**Rollen & Berechtigungen**
-- Rollenmodell: `server_admin`, `admin` (Event), `member` (Event)
-- Event-Einladungssystem mit konfigurierbarem Registrierungsmodus
-- Admin-Einladung per E-Mail mit Token-basierter Annahme
+### Technische Details
 
-**DSGVO**
-- Einwilligungsprotokollierung mit Versionierung
-- Datenexport (Art. 15/20 DSGVO) als JSON-Download
-- Soft-Delete mit konfigurierbarer Aufbewahrungsfrist
-- Datenschutzerklärung als Markdown-Template mit Platzhaltern
-
-**Setup**
-- 2-Schritt-Setup: Datenbank → Server-Admin per Magic Link
-- `config.example.php` als Vorlage für neue Installationen
+- 30+ PHP-Dateien, ~7.000 Zeilen Produktionscode
+- 20 Datenbanktabellen
+- PHP 8.0+ (kein Framework, kein Composer)
+- Tailwind CSS 3.x und Chart.js 4.x (CDN)
+- PHPMailer 6.9.2 (LGPL 2.1)
+- Deployment auf IONOS Shared Webspace getestet

@@ -16,25 +16,23 @@ define('DB_CHARSET', 'utf8mb4');
 
 // ── Anwendungs-Einstellungen ────────────────────────────────
 define('APP_NAME', 'BOS-Score');
-define('APP_VERSION', '0.9.1');
+define('APP_VERSION', '1.0.0');
 define('TIMEZONE', 'Europe/Berlin');
 
 // ── Setup-Sperre ────────────────────────────────────────────
-// Nach der Ersteinrichtung auf true setzen!
 define('SETUP_COMPLETE', false);
 
 // ── Fehleranzeige ───────────────────────────────────────────
-// Im Produktivbetrieb auf false setzen
 define('DEBUG_MODE', false);
 
 // ── SMTP E-Mail-Versand ─────────────────────────────────────
 define('SMTP_HOST', 'smtp.example.com');
-define('SMTP_PORT', 587);              // 587 = TLS, 465 = SSL
+define('SMTP_PORT', 587);
 define('SMTP_USER', 'noreply@example.com');
 define('SMTP_PASS', 'DEIN_SMTP_PASSWORT');
 define('SMTP_FROM', 'noreply@example.com');
 define('SMTP_FROM_NAME', 'BOS-Score');
-define('SMTP_ENCRYPTION', 'tls');      // 'tls' oder 'ssl'
+define('SMTP_ENCRYPTION', 'tls');
 
 // ── Authentifizierung & Sessions ────────────────────────────
 define('SESSION_LIFETIME_DAYS', 30);
@@ -68,6 +66,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// ── CSRF-Schutz ─────────────────────────────────────────────
+
 function csrf_token(): string {
     if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -81,4 +81,83 @@ function csrf_field(): string {
 
 function verify_csrf(string $token): bool {
     return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+// ── Hilfsfunktionen ─────────────────────────────────────────
+
+function e(string $str): string {
+    return htmlspecialchars($str, ENT_QUOTES, 'UTF-8');
+}
+
+function format_date(string $date): string {
+    return (new DateTime($date))->format('d.m.Y');
+}
+
+function format_datetime(string $datetime): string {
+    return (new DateTime($datetime))->format('d.m.Y \u\m H:i \U\h\r');
+}
+
+function format_time(string $time): string {
+    return substr($time, 0, 5);
+}
+
+function format_weekday(string $date): string {
+    $days = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+    return $days[(int)(new DateTime($date))->format('w')];
+}
+
+function format_currency(float $amount): string {
+    return number_format($amount, 2, ',', '.') . ' €';
+}
+
+function generate_token(int $length = 32): string {
+    return bin2hex(random_bytes($length));
+}
+
+function json_response(array $data, int $code = 200): void {
+    http_response_code($code);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function redirect(string $url): void {
+    header('Location: ' . $url);
+    exit;
+}
+
+function get_base_url(): string {
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $path = dirname($_SERVER['SCRIPT_NAME']);
+    return rtrim($protocol . '://' . $host . $path, '/');
+}
+
+function is_https(): bool {
+    return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+        || (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+}
+
+function hash_value(string $value): string {
+    return hash('sha256', $value);
+}
+
+function parse_device_label(string $userAgent): string {
+    $ua = strtolower($userAgent);
+    $device = 'Unbekannt';
+    if (strpos($ua, 'ipad') !== false) $device = 'Tablet/iPad';
+    elseif (strpos($ua, 'iphone') !== false) $device = 'Mobile/iPhone';
+    elseif (strpos($ua, 'android') !== false) $device = strpos($ua, 'mobile') !== false ? 'Mobile/Android' : 'Tablet/Android';
+    elseif (strpos($ua, 'windows') !== false) $device = 'Desktop/Windows';
+    elseif (strpos($ua, 'macintosh') !== false || strpos($ua, 'mac os') !== false) $device = 'Desktop/Mac';
+    elseif (strpos($ua, 'linux') !== false) $device = 'Desktop/Linux';
+
+    $browser = '';
+    if (strpos($ua, 'firefox') !== false) $browser = 'Firefox';
+    elseif (strpos($ua, 'edg/') !== false || strpos($ua, 'edge') !== false) $browser = 'Edge';
+    elseif (strpos($ua, 'chrome') !== false && strpos($ua, 'edg') === false) $browser = 'Chrome';
+    elseif (strpos($ua, 'safari') !== false && strpos($ua, 'chrome') === false) $browser = 'Safari';
+
+    return $browser ? "$device · $browser" : $device;
 }

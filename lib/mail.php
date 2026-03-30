@@ -214,3 +214,62 @@ EOT;
 
     return send_mail($adminEmail, $subject, $body);
 }
+
+/**
+ * Sendet eine direkte Teilnehmer-Einladung per E-Mail.
+ * Der Admin lädt gezielt eine Person per E-Mail-Adresse ein.
+ */
+function send_participant_invitation_mail(string $email, string $eventName, string $inviteToken, string $inviterName): bool {
+    $baseUrl = get_base_url();
+    $inviteUrl = $baseUrl . '/index.php?invite=' . $inviteToken;
+    $appName = APP_NAME;
+
+    $subject = "$appName – Einladung: $eventName";
+    $body = <<<EOT
+Hallo,
+
+$inviterName hat dich zur Teilnahme am Event "$eventName" in $appName eingeladen.
+
+Klicke auf den folgenden Link, um dich zu registrieren:
+
+$inviteUrl
+
+Nach der Registrierung erhältst du einen Anmeldelink per E-Mail, mit dem du dich jederzeit einloggen kannst.
+
+Falls du diese Einladung nicht erwartet hast, kannst du sie ignorieren.
+
+---
+$appName
+Diese E-Mail wurde automatisch gesendet. Bitte antworte nicht auf diese Nachricht.
+EOT;
+
+    return send_mail($email, $subject, $body);
+}
+
+/**
+ * Sendet eine Server-Admin-Einladung per E-Mail.
+ */
+function send_server_admin_invitation_mail(string $email, string $inviterName): bool {
+    $baseUrl = get_base_url();
+    $loginUrl = $baseUrl . '/index.php?login';
+    $appName = APP_NAME;
+
+    $subject = $appName . ' - Einladung als Server-Administrator';
+    $body = <<<EOT
+Hallo,
+
+$inviterName hat dich als Server-Administrator in $appName eingeladen. Du hast damit Zugriff auf die globale Verwaltung aller Events.
+
+Melde dich hier an:
+
+$loginUrl
+
+Falls du noch keinen Account hast, wende dich bitte an $inviterName.
+
+---
+$appName
+Diese E-Mail wurde automatisch gesendet. Bitte antworte nicht auf diese Nachricht.
+EOT;
+
+    return send_mail($email, $subject, $body);
+}

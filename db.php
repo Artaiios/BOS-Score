@@ -107,12 +107,13 @@ function update_event(int $id, array $data): void {
     $fields = [];
     $params = [];
     $allowed = [
-        'name', 'status', 'organization_name',
+        'name', 'status', 'organization_name', 'contact_email',
         'deadline_1_date', 'deadline_1_count', 'deadline_1_name', 'deadline_1_enabled',
         'deadline_2_date', 'deadline_2_count', 'deadline_2_name',
         'session_duration_hours', 'weather_location', 'weather_lat', 'weather_lng',
         'roles_enabled', 'auto_confirm_registration',
         'theme_primary', 'theme_logo_path',
+        'announcement_text', 'announcement_expires_at',
     ];
 
     foreach ($allowed as $field) {
@@ -499,7 +500,7 @@ function get_penalty_stats_by_member(int $eventId): array {
 // ── Server-Admin Statistiken (anonymisiert) ─────────────────
 
 function get_event_stats_overview(): array {
-    $sql = "SELECT e.id, e.name, e.organization_name, e.status, e.created_at, e.theme_primary,
+    $sql = "SELECT e.id, e.name, e.organization_name, e.status, e.created_at, e.theme_primary, e.public_token,
             (SELECT COUNT(*) FROM members m WHERE m.event_id = e.id AND m.active = 1) as member_count,
             (SELECT COUNT(*) FROM sessions s WHERE s.event_id = e.id) as session_count,
             (SELECT COUNT(*) FROM attendance a JOIN sessions s2 ON a.session_id = s2.id WHERE s2.event_id = e.id AND a.status = 'present') as total_present,
@@ -509,13 +510,64 @@ function get_event_stats_overview(): array {
 }
 
 function get_global_audit_log(int $limit = 200): array {
-    $sql = "SELECT al.*, ev.name as event_name
+    $sql = "SELECT al.*, ev.name as event_name, ua.display_name as user_name
             FROM audit_log al
             LEFT JOIN events ev ON al.event_id = ev.id
+            LEFT JOIN user_accounts ua ON al.user_account_id = ua.id
             ORDER BY al.created_at DESC
             LIMIT ?";
     $stmt = get_pdo()->prepare($sql);
     $stmt->execute([$limit]);
+    return $stmt->fetchAll();
+}
+
+// ── Rollen (Event-interne Rollen, z.B. Gruppenführer) ───────
+
+// ── Server-Admin Verwaltung ─────────────────────────────────
+
+function get_all_server_admins(): array {
+    $stmt = get_pdo()->prepare("
+        SELECT ua.id, ua.email, ua.display_name, er.granted_at, er.granted_by,
+               ga.display_name as granted_by_name
+        FROM event_roles er
+        JOIN user_accounts ua ON er.user_account_id = ua.id
+        LEFT JOIN user_accounts ga ON er.granted_by = ga.id
+        WHERE er.event_id IS NULL AND er.role = 'server_admin'
+          AND ua.deleted_at IS NULL
+        ORDER BY er.granted_at ASC
+    ");
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
+function remove_server_admin_role(int $userId): void {
+    $stmt = get_pdo()->prepare("DELETE FROM event_roles WHERE user_account_id = ? AND event_id IS NULL AND role = 'server_admin'");
+    $stmt->execute([$userId]);
+}
+
+function get_all_user_accounts(bool $includeDeleted = false): array {
+    $sql = "SELECT ua.id, ua.email, ua.display_name, ua.created_at, ua.deleted_at,
+                   ua.consent_given_at, ua.consent_version,
+                   (SELECT GROUP_CONCAT(DISTINCT CONCAT(COALESCE(e.name, 'Server'), ':', er2.role) SEPARATOR ', ')
+                    FROM event_roles er2 LEFT JOIN events e ON er2.event_id = e.id
+                    WHERE er2.user_account_id = ua.id) as roles_summary,
+                   (SELECT COUNT(*) FROM event_roles er3 WHERE er3.user_account_id = ua.id AND er3.event_id IS NOT NULL) as event_count
+            FROM user_accounts ua";
+    if (!$includeDeleted) $sql .= " WHERE ua.deleted_at IS NULL";
+    $sql .= " ORDER BY ua.display_name ASC";
+    return get_pdo()->query($sql)->fetchAll();
+}
+
+function get_event_admins_for_event(int $eventId): array {
+    $stmt = get_pdo()->prepare("
+        SELECT ua.id, ua.email, ua.display_name, er.granted_at
+        FROM event_roles er
+        JOIN user_accounts ua ON er.user_account_id = ua.id
+        WHERE er.event_id = ? AND er.role = 'admin'
+          AND ua.deleted_at IS NULL
+        ORDER BY er.granted_at ASC
+    ");
+    $stmt->execute([$eventId]);
     return $stmt->fetchAll();
 }
 

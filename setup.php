@@ -123,6 +123,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['step']) && $_POST['st
             auto_confirm_registration TINYINT(1) NOT NULL DEFAULT 1,
             theme_primary VARCHAR(7) DEFAULT '#dc2626',
             theme_logo_path VARCHAR(255) DEFAULT NULL,
+            announcement_text TEXT NULL,
+            announcement_expires_at DATETIME NULL,
+            contact_email VARCHAR(255) NULL,
             status ENUM('active','archived') NOT NULL DEFAULT 'active',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
